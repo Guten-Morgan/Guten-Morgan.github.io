@@ -425,7 +425,7 @@
       return [...rows].sort((a, b) => {
         const va = a[sortCol], vb = b[sortCol];
         if (typeof va === "string") return sortDir * va.localeCompare(vb);
-        return sortDir * (vb - va);
+        return sortDir * (va - vb);
       });
     }
 
