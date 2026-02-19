@@ -216,6 +216,42 @@
     }
     .method-card strong { color: var(--text); }
 
+    /* ── Refresh bar ─────────────────────────────────────── */
+    .refresh-bar {
+      background: var(--bg-tinted);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 0;
+      font-size: .78rem; color: var(--text-3);
+    }
+    .refresh-inner {
+      display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    }
+    .refresh-status { flex: 1; }
+    .refresh-status strong { color: var(--text-2); }
+    .refresh-btn {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .3rem .85rem; border-radius: 100px;
+      font-size: .75rem; font-weight: 600;
+      background: var(--white); border: 1.5px solid var(--border);
+      color: var(--blue); cursor: pointer;
+      transition: all var(--t);
+    }
+    .refresh-btn:hover:not(:disabled) { background: var(--blue); color: var(--white); border-color: var(--blue); }
+    .refresh-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .refresh-btn svg { width: 12px; height: 12px; }
+    .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .refresh-progress {
+      height: 2px; background: var(--border);
+      position: relative; overflow: hidden; border-radius: 1px;
+    }
+    .refresh-progress-bar {
+      height: 100%; background: var(--gold);
+      border-radius: 1px; transition: width .3s ease;
+      width: 0%;
+    }
+
     @media (max-width: 640px) {
       .war-bar-cell, td.td-owar, td.td-dwar { display: none; }
       thead th.th-owar, thead th.th-dwar, thead th.th-bar { display: none; }
@@ -290,6 +326,27 @@
     </div>
   </div>
 
+  <!-- ===== REFRESH BAR ===== -->
+  <div class="refresh-bar" id="refreshBar">
+    <div class="container">
+      <div class="refresh-inner">
+        <span class="refresh-status" id="refreshStatus">
+          <strong>2025 data:</strong> loading…
+        </span>
+        <button class="refresh-btn" id="refreshBtn" disabled>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c1.8 0 3.4.87 4.4 2.2"/>
+            <path d="M13.5 2.5v2.7h-2.7"/>
+          </svg>
+          Refresh 2025
+        </button>
+      </div>
+      <div class="refresh-progress" id="refreshProgress" style="display:none; margin-top:5px;">
+        <div class="refresh-progress-bar" id="refreshProgressBar"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== TABLE ===== -->
   <section class="war-section">
     <div class="container">
@@ -339,6 +396,270 @@
   </footer>
 
   <script src="js/pwhl-data.js"></script>
+  <script>
+  // ════════════════════════════════════════════════════════════════
+  //  PWHL 2025 Live Refresh Engine
+  //  Fetches directly from pwhl.hockey-statistics.com (public API)
+  //  and re-computes the WAR model entirely in the browser.
+  // ════════════════════════════════════════════════════════════════
+  const REFRESH = (() => {
+    const API   = "https://pwhl.hockey-statistics.com/api";
+    const KEY   = "pwhl_2025_cache";
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000;  // 6-hour cache
+
+    const XG = {
+      "Non quality on net": 0.051034,
+      "Quality on net":     0.094262,
+      "Quality goal":       0.159976,
+      "Non quality goal":   0.191898,
+    };
+    const TEAM_MAP = {
+      "Boston Fleet":"BOS","Minnesota Frost":"MIN",
+      "Montr\u00e9al Victoire":"MTL","New York Sirens":"NY",
+      "Ottawa Charge":"OTT","Toronto Sceptres":"TOR",
+      "Seattle Torrent":"SEA","Vancouver Goldeneyes":"VAN",
+    };
+    const MIN_TOI   = 25;
+    const REPL_PCT  = 20;
+    const DEF_W     = 0.1;
+
+    // ── Maths helpers ────────────────────────────────────────────
+    function pctile(arr, p) {
+      const s = [...arr].sort((a,b)=>a-b);
+      const idx = (p/100)*(s.length-1);
+      const lo=Math.floor(idx), hi=Math.ceil(idx);
+      return s[lo] + (s[hi]-s[lo])*(idx-lo);
+    }
+    function wMean(vals, wts) {
+      let sw=0, sv=0;
+      vals.forEach((v,i)=>{ sw+=wts[i]; sv+=v*wts[i]; });
+      return sw ? sv/sw : 0;
+    }
+    function ols(xs, ys) {
+      const n=xs.length;
+      const mx=xs.reduce((a,b)=>a+b)/n, my=ys.reduce((a,b)=>a+b)/n;
+      let num=0, den=0;
+      xs.forEach((x,i)=>{ num+=(x-mx)*(ys[i]-my); den+=(x-mx)**2; });
+      const slope = den ? num/den : 0;
+      return { slope, intercept: my - slope*mx };
+    }
+    function pidFromUrl(url) {
+      try { return parseInt(url.split("/").pop()); } catch { return 0; }
+    }
+    function parseTOI(s) {
+      if (!s) return 0;
+      const [m,sec] = s.split(":");
+      return parseInt(m)+parseInt(sec)/60;
+    }
+    function posGroup(p) {
+      p = (p||"").toUpperCase();
+      if (p==="G") return "G";
+      if (["LD","RD","D"].includes(p)) return "D";
+      return "F";
+    }
+
+    // ── Batch fetch with concurrency limit ───────────────────────
+    async function batchFetch(urls, concurrency=6) {
+      const results=[], queue=[...urls];
+      async function worker() {
+        while (queue.length) {
+          const url=queue.shift();
+          try { results.push(await fetch(url).then(r=>r.json())); }
+          catch { results.push(null); }
+        }
+      }
+      await Promise.all(Array.from({length:concurrency}, worker));
+      return results;
+    }
+
+    // ── Compute WAR from aggregated player map ───────────────────
+    function computeWAR(players, gpw) {
+      const rows = Object.values(players).filter(p => p.pos!=="G");
+
+      rows.forEach(p => {
+        p.o_xG60   = p.toi > 0.1 ? (p.ixG / p.toi * 60) : 0;
+        p.pm60     = p.toi > 0.1 ? (p.pm  / p.toi * 60) : 0;
+      });
+
+      const qual = rows.filter(p => p.toi >= MIN_TOI);
+      if (qual.length < 2) return [];
+
+      const { slope, intercept } = ols(qual.map(p=>p.o_xG60), qual.map(p=>p.pm60));
+
+      rows.forEach(p => {
+        p.pm60_resid = p.pm60 - (intercept + slope*p.o_xG60);
+      });
+
+      const leagueResid = wMean(qual.map(p=>p.pm60_resid), qual.map(p=>p.toi));
+      rows.forEach(p => {
+        p.d_adj  = p.pm60_resid - leagueResid;
+        p.d_val60 = p.d_adj * DEF_W;
+        p.val60   = p.o_xG60 + p.d_val60;
+      });
+
+      const o_repl = pctile(qual.map(p=>p.o_xG60),  REPL_PCT);
+      const d_repl = pctile(qual.map(p=>p.d_val60), REPL_PCT);
+
+      rows.forEach(p => {
+        p.oGAR = (p.o_xG60  - o_repl) * p.toi / 60;
+        p.dGAR = (p.d_val60 - d_repl) * p.toi / 60;
+        p.oWAR = p.oGAR / gpw;
+        p.dWAR = p.dGAR / gpw;
+        p.WAR  = p.oWAR + Math.abs(p.dWAR);
+      });
+
+      return rows.map(p => ({
+        id:   p.id,
+        name: p.name,
+        team: p.team,
+        pos:  p.pos,
+        gp:   p.gp,
+        toi:  Math.round(p.toi*10)/10,
+        war:  Math.round(p.WAR*1000)/1000,
+        owar: Math.round(p.oWAR*1000)/1000,
+        dwar: Math.round(p.dWAR*1000)/1000,
+      }));
+    }
+
+    // ── Main refresh ─────────────────────────────────────────────
+    async function run(onProgress) {
+      onProgress(0, "Fetching schedule…");
+
+      const schedResp = await fetch(`${API}/schedule`).then(r=>r.json());
+      const games2025 = schedResp.games.filter(
+        g => g.season_year==="2025/2026" && g.status.startsWith("Final")
+      );
+      const gameIds = games2025.map(g=>parseInt(g.game_id));
+
+      // Build team abbr map from schedule
+      const teamMap = {};
+      schedResp.games.forEach(g=>{
+        teamMap[g.home_team] = TEAM_MAP[g.home_team] || g.home_team;
+        teamMap[g.away_team] = TEAM_MAP[g.away_team] || g.away_team;
+      });
+      const gameTeams={};
+      schedResp.games.forEach(g=>{
+        gameTeams[parseInt(g.game_id)] = {
+          home: teamMap[g.home_team], away: teamMap[g.away_team]
+        };
+      });
+
+      const total = gameIds.length;
+      onProgress(5, `Fetching ${total} games…`);
+
+      // Fetch PBP + Summary in parallel (split into two batches)
+      const pbpUrls  = gameIds.map(id=>`${API}/game/playbyplay/${id}`);
+      const summUrls = gameIds.map(id=>`${API}/game/summary/${id}`);
+
+      let done=0;
+      const tick = () => { done++; onProgress(5 + Math.round(done/(total*2)*85), null); };
+
+      // fetch both sets concurrently but track progress
+      const [pbpResults, summResults] = await Promise.all([
+        (async()=>{ const r=[]; for (const u of pbpUrls) { try{r.push(await fetch(u).then(x=>x.json()));}catch{r.push(null);} tick(); } return r; })(),
+        (async()=>{ const r=[]; for (const u of summUrls) { try{r.push(await fetch(u).then(x=>x.json()));}catch{r.push(null);} tick(); } return r; })(),
+      ]);
+
+      onProgress(92, "Computing WAR…");
+
+      // Aggregate player data
+      const players={};
+      const teamIdToAbbr={};
+      let totalGoals=0, nTeamGames=0;
+
+      gameIds.forEach((gid, gi) => {
+        const pbp  = pbpResults[gi];
+        const summ = summResults[gi];
+        if (!pbp || !summ) return;
+
+        const gt = gameTeams[gid] || {};
+
+        // Collect team_id → abbr from goal events
+        pbp.forEach(e => {
+          if (e.event==="goal") {
+            const t=e.details?.team;
+            if (t?.id && t?.abbreviation) teamIdToAbbr[String(t.id)]=t.abbreviation;
+          }
+        });
+
+        // ixG from shot events
+        const ixgMap={};
+        pbp.forEach(e => {
+          if (e.event!=="shot") return;
+          const pid=e.details?.shooter?.id;
+          const xg=XG[e.details?.shotQuality] || 0;
+          if (pid) ixgMap[pid]=(ixgMap[pid]||0)+xg;
+        });
+
+        // pid → team from shot events
+        const pidTeam={};
+        pbp.forEach(e => {
+          if (e.event==="shot") {
+            const pid=e.details?.shooter?.id;
+            const tid=String(e.details?.shooterTeamId||"");
+            if (pid && teamIdToAbbr[tid]) pidTeam[pid]=teamIdToAbbr[tid];
+          }
+          if (e.event==="goal") {
+            const pid=e.details?.scoredBy?.id;
+            const tid=String(e.details?.team?.id||"");
+            if (pid && teamIdToAbbr[tid]) pidTeam[pid]=teamIdToAbbr[tid];
+          }
+        });
+
+        // Goals and goal count
+        pbp.forEach(e => {
+          if (e.event==="goal") totalGoals++;
+        });
+
+        // Summaries
+        ["homeTeam","visitingTeam"].forEach((side, si) => {
+          const defAbbr = si===0 ? gt.home : gt.away;
+          ["skaters","goalies"].forEach(pk => {
+            (summ[side]?.[pk]||[]).forEach(p => {
+              const pid=pidFromUrl(p.playerImageURL||"");
+              if (!pid) return;
+              const pos=posGroup(p.position);
+              const st=p.stats||{};
+              const toi=parseTOI(st.toi||st.timeOnIce||"");
+              const team=pidTeam[pid]||defAbbr||"UNK";
+              const key=`${pid}|${team}`;
+              if (!players[key]) players[key]={id:pid,name:p.name||"",team,pos,gp:0,toi:0,ixG:0,pm:0};
+              if (toi>0) { players[key].gp++; players[key].toi+=toi; }
+              players[key].ixG  += ixgMap[pid]||0;
+              players[key].pm   += st.plusMinus||0;
+            });
+          });
+          nTeamGames++;
+        });
+      });
+
+      // goals_per_win from season data
+      const avgGoalsPerTeam = nTeamGames ? totalGoals/nTeamGames : 2.25;
+      const gpw = 2*avgGoalsPerTeam;
+
+      const warRows = computeWAR(players, gpw);
+      onProgress(100, "Done");
+      return { rows: warRows, gpw, gameCount: gameIds.length, ts: Date.now() };
+    }
+
+    // ── Public API ───────────────────────────────────────────────
+    return {
+      loadCache() {
+        try {
+          const raw = localStorage.getItem(KEY);
+          if (!raw) return null;
+          const cached = JSON.parse(raw);
+          if (Date.now()-cached.ts > CACHE_TTL_MS) return null;
+          return cached;
+        } catch { return null; }
+      },
+      saveCache(data) {
+        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {}
+      },
+      run
+    };
+  })();
+  </script>
   <script>
   (function () {
     // ── State ───────────────────────────────────────────────────────
@@ -526,6 +847,61 @@
         render();
       });
     });
+
+    // ── Refresh UI wiring ────────────────────────────────────────────
+    const statusEl  = document.getElementById("refreshStatus");
+    const btnEl     = document.getElementById("refreshBtn");
+    const progressEl= document.getElementById("refreshProgress");
+    const barEl     = document.getElementById("refreshProgressBar");
+
+    function setStatus(ts, gameCount, gpw) {
+      const d = new Date(ts);
+      const ago = Math.round((Date.now()-ts)/60000);
+      const agoTxt = ago < 2 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.round(ago/60)}h ago`;
+      statusEl.innerHTML =
+        `<strong>2025 data:</strong> ${gameCount} games · gpw ${gpw.toFixed(2)} · updated ${agoTxt}`;
+      btnEl.disabled = false;
+    }
+
+    function setProgress(pct, msg) {
+      progressEl.style.display = pct < 100 && pct > 0 ? "block" : "none";
+      barEl.style.width = pct + "%";
+      if (msg) statusEl.innerHTML = `<strong>2025 data:</strong> ${msg}`;
+    }
+
+    async function doRefresh() {
+      btnEl.disabled = true;
+      btnEl.classList.add("spinning");
+      progressEl.style.display = "block";
+      try {
+        const result = await REFRESH.run(setProgress);
+        PWHL_DATA["2025"] = result.rows;
+        REFRESH.saveCache(result);
+        setStatus(result.ts, result.gameCount, result.gpw);
+        buildTeamFilter();
+        render();
+      } catch (err) {
+        statusEl.innerHTML = `<strong>2025 data:</strong> Refresh failed — ${err.message}`;
+        btnEl.disabled = false;
+      }
+      btnEl.classList.remove("spinning");
+      progressEl.style.display = "none";
+    }
+
+    btnEl.addEventListener("click", doRefresh);
+
+    // On load: try cache first, then show static data
+    (function initRefresh() {
+      const cached = REFRESH.loadCache();
+      if (cached) {
+        PWHL_DATA["2025"] = cached.rows;
+        setStatus(cached.ts, cached.gameCount, cached.gpw);
+        render();
+      } else {
+        statusEl.innerHTML = `<strong>2025 data:</strong> Using bundled snapshot · click Refresh for latest`;
+        btnEl.disabled = false;
+      }
+    })();
 
     // ── Init ────────────────────────────────────────────────────────
     buildTeamFilter();
