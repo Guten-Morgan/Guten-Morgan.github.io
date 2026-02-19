@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PWHL WAR Leaderboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* ── Page shell ─────────────────────────────────────── */
+    .war-hero {
+      background: linear-gradient(135deg, var(--blue-dark) 0%, var(--blue) 60%, var(--blue-mid) 100%);
+      padding: 100px 0 64px;
+      color: var(--white);
+      position: relative;
+      overflow: hidden;
+    }
+    .war-hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 80% at 80% 50%, rgba(207,181,59,.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .war-hero-inner {
+      position: relative; z-index: 1;
+    }
+    .war-back {
+      display: inline-flex; align-items: center; gap: .4rem;
+      font-size: .8rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+      color: rgba(255,255,255,.6);
+      margin-bottom: 1.5rem;
+      transition: color var(--t);
+    }
+    .war-back:hover { color: var(--gold-light); }
+    .war-back svg { width: 14px; height: 14px; }
+    .war-hero h1 { font-family: var(--font-serif); font-size: clamp(2rem,4vw,3rem); margin-bottom: .5rem; }
+    .war-hero p  { color: rgba(255,255,255,.72); font-size: 1.05rem; max-width: 560px; }
+    .war-badge {
+      display: inline-block;
+      background: rgba(207,181,59,.18); border: 1px solid rgba(207,181,59,.4);
+      color: var(--gold-light); font-size: .72rem; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; padding: .25rem .75rem; border-radius: 100px;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Controls panel ──────────────────────────────────── */
+    .war-controls {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 28px 0;
+      position: sticky; top: 66px; z-index: 90;
+      box-shadow: var(--shadow-sm);
+    }
+    .controls-grid {
+      display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-end;
+    }
+    .control-group { display: flex; flex-direction: column; gap: .4rem; }
+    .control-label {
+      font-size: .7rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+      color: var(--text-3);
+    }
+
+    /* Season wheel */
+    .season-wheel {
+      display: flex; gap: 0;
+      border: 1.5px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; background: var(--bg);
+    }
+    .season-btn {
+      padding: .45rem 1.1rem;
+      font-size: .85rem; font-weight: 500; color: var(--text-2);
+      background: transparent; border: none;
+      cursor: pointer; transition: background var(--t), color var(--t);
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      user-select: none;
+    }
+    .season-btn:last-child { border-right: none; }
+    .season-btn:hover { background: var(--blue-pale); color: var(--blue); }
+    .season-btn.active {
+      background: var(--blue); color: var(--white); font-weight: 600;
+    }
+
+    /* Pill filters */
+    .pill-group { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .pill-btn {
+      padding: .35rem .85rem;
+      font-size: .8rem; font-weight: 500;
+      border: 1.5px solid var(--border); border-radius: 100px;
+      background: var(--white); color: var(--text-2);
+      cursor: pointer; transition: all var(--t);
+    }
+    .pill-btn:hover { border-color: var(--blue-light); color: var(--blue); }
+    .pill-btn.active {
+      background: var(--blue); border-color: var(--blue); color: var(--white);
+      font-weight: 600;
+    }
+
+    /* Pos toggle */
+    .pos-toggle { display: flex; gap: 0; border: 1.5px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .pos-btn {
+      padding: .45rem 1rem; font-size: .85rem; font-weight: 500;
+      border: none; background: transparent; color: var(--text-2);
+      cursor: pointer; transition: background var(--t), color var(--t);
+      border-right: 1px solid var(--border);
+    }
+    .pos-btn:last-child { border-right: none; }
+    .pos-btn:hover { background: var(--blue-pale); color: var(--blue); }
+    .pos-btn.active { background: var(--blue); color: var(--white); font-weight: 600; }
+
+    /* ── Table section ───────────────────────────────────── */
+    .war-section { padding: 48px 0 80px; }
+    .war-meta {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1rem; flex-wrap: wrap; gap: .5rem;
+    }
+    .war-count {
+      font-size: .85rem; color: var(--text-3);
+    }
+    .war-count strong { color: var(--text); font-weight: 600; }
+    .war-note {
+      font-size: .75rem; color: var(--text-3); font-style: italic;
+    }
+
+    /* Table wrapper */
+    .table-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    table {
+      width: 100%; border-collapse: collapse;
+    }
+    thead th {
+      background: var(--blue-dark);
+      color: rgba(255,255,255,.85);
+      font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+      padding: .85rem 1rem;
+      text-align: left; white-space: nowrap;
+      cursor: pointer; user-select: none;
+      transition: background var(--t);
+    }
+    thead th:hover { background: var(--blue-mid); color: var(--white); }
+    thead th.sorted-asc::after  { content: " ▲"; opacity: .8; }
+    thead th.sorted-desc::after { content: " ▼"; opacity: .8; }
+    thead th.th-rank, thead th.th-gp { text-align: center; }
+    thead th.th-war, thead th.th-owar, thead th.th-dwar { text-align: right; }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background var(--t);
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--blue-pale); }
+
+    td {
+      padding: .7rem 1rem; font-size: .875rem; color: var(--text); vertical-align: middle;
+    }
+    td.td-rank {
+      text-align: center; font-size: .8rem; font-weight: 700;
+      color: var(--text-3); width: 52px;
+    }
+    td.td-rank.top3 { color: var(--gold-dark); }
+
+    .player-cell { display: flex; flex-direction: column; gap: 1px; }
+    .player-name { font-weight: 600; color: var(--text); }
+    .player-seasons { font-size: .72rem; color: var(--text-3); }
+
+    .team-chip {
+      display: inline-block;
+      font-size: .7rem; font-weight: 700; letter-spacing: .06em;
+      padding: .2rem .55rem; border-radius: 5px;
+      background: var(--blue-pale2); color: var(--blue);
+    }
+    .pos-chip {
+      display: inline-block;
+      font-size: .7rem; font-weight: 700;
+      padding: .2rem .55rem; border-radius: 5px;
+    }
+    .pos-chip.F { background: #FEF3C7; color: #92400E; }
+    .pos-chip.D { background: #DBEAFE; color: #1E40AF; }
+
+    td.td-war, td.td-owar, td.td-dwar {
+      text-align: right; font-variant-numeric: tabular-nums; font-weight: 500;
+    }
+    td.td-war { font-weight: 700; }
+    .war-bar-cell { width: 120px; }
+    .war-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .war-bar      { height: 100%; background: var(--gold); border-radius: 3px; transition: width .4s ease; }
+
+    td.td-gp { text-align: center; color: var(--text-3); font-size: .82rem; }
+
+    .dwar-pos { color: #15803D; }
+    .dwar-neg { color: #B91C1C; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 64px 24px; color: var(--text-3);
+    }
+    .empty-state svg { width: 48px; height: 48px; opacity: .35; margin: 0 auto 1rem; }
+    .empty-state p { font-size: .95rem; }
+
+    /* Method note */
+    .method-card {
+      background: var(--blue-pale);
+      border: 1px solid var(--blue-pale2);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      margin-top: 2rem;
+      font-size: .82rem; color: var(--text-2); line-height: 1.7;
+    }
+    .method-card strong { color: var(--text); }
+
+    @media (max-width: 640px) {
+      .war-bar-cell, td.td-owar, td.td-dwar { display: none; }
+      thead th.th-owar, thead th.th-dwar, thead th.th-bar { display: none; }
+      .controls-grid { flex-direction: column; }
+      .pill-group { gap: .3rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== NAV (matches portfolio) ===== -->
+  <nav class="navbar" id="navbar" style="position:sticky;">
+    <div class="nav-inner">
+      <a href="index.html" class="nav-brand">
+        <span class="brand-name">Portfolio</span>
+        <span class="brand-sep">|</span>
+        <span class="brand-role">PWHL WAR</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="index.html#projects" class="nav-link">Projects</a></li>
+        <li><a href="index.html#blog"     class="nav-link">Writing</a></li>
+        <li><a href="index.html#resume"   class="nav-link">Resume</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ===== HERO ===== -->
+  <div class="war-hero">
+    <div class="container war-hero-inner">
+      <a href="index.html" class="war-back">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 3L5 8l5 5"/></svg>
+        Back to Portfolio
+      </a>
+      <div class="war-badge">Sports Analytics</div>
+      <h1>PWHL WAR Leaderboard</h1>
+      <p>xG-based Wins Above Replacement for PWHL skaters across all three seasons (2023–24 through 2025–26).</p>
+    </div>
+  </div>
+
+  <!-- ===== CONTROLS ===== -->
+  <div class="war-controls">
+    <div class="container">
+      <div class="controls-grid">
+
+        <!-- Season wheel -->
+        <div class="control-group">
+          <span class="control-label">Season</span>
+          <div class="season-wheel" id="seasonWheel" role="group" aria-label="Season selector">
+            <button class="season-btn" data-season="2023">2023</button>
+            <button class="season-btn" data-season="2024">2024</button>
+            <button class="season-btn active" data-season="2025">2025</button>
+          </div>
+        </div>
+
+        <!-- Team filter -->
+        <div class="control-group">
+          <span class="control-label">Team</span>
+          <div class="pill-group" id="teamFilter"></div>
+        </div>
+
+        <!-- Position filter -->
+        <div class="control-group">
+          <span class="control-label">Position</span>
+          <div class="pos-toggle" id="posFilter">
+            <button class="pos-btn active" data-pos="ALL">All</button>
+            <button class="pos-btn"        data-pos="F">F</button>
+            <button class="pos-btn"        data-pos="D">D</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TABLE ===== -->
+  <section class="war-section">
+    <div class="container">
+      <div class="war-meta">
+        <p class="war-count" id="warCount"></p>
+        <p class="war-note" id="warNote"></p>
+      </div>
+
+      <div class="table-wrap">
+        <table id="warTable">
+          <thead>
+            <tr>
+              <th class="th-rank">#</th>
+              <th data-col="name">Player</th>
+              <th data-col="team">Team</th>
+              <th data-col="pos">Pos</th>
+              <th class="th-gp" data-col="gp">GP</th>
+              <th class="th-owar" data-col="owar">oWAR</th>
+              <th class="th-dwar" data-col="dwar">dWAR</th>
+              <th class="th-war sorted-desc" data-col="war">WAR</th>
+              <th class="th-bar war-bar-cell"></th>
+            </tr>
+          </thead>
+          <tbody id="warBody"></tbody>
+        </table>
+      </div>
+
+      <div class="method-card">
+        <strong>Method:</strong>
+        Offensive value = individual xG per 60 min (EV + PP + SH).
+        Defensive value = residual plus/minus per 60 min (OLS-orthogonalized to remove offensive contamination), weighted at 0.1.
+        Replacement level = 20th percentile of each component.
+        Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
+        When multiple seasons are selected, WAR is averaged across seasons played.
+        <strong>2025 season is partial</strong> (61/120 games) and uses an approximated xG model from shot-quality categories.
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <p class="footer-copy">&copy; 2026 · PWHL WAR Model · Data from hockey-statistics.com</p>
+      <div class="footer-links">
+        <a href="index.html" class="footer-link">Portfolio</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/pwhl-data.js"></script>
+  <script>
+  (function () {
+    // ── State ───────────────────────────────────────────────────────
+    let selectedSeasons = new Set(["2025"]);
+    let selectedTeam    = "ALL";
+    let selectedPos     = "ALL";
+    let sortCol         = "war";
+    let sortDir         = -1;  // -1 = desc
+
+    // ── Teams per season ────────────────────────────────────────────
+    function allTeams() {
+      const ts = new Set();
+      for (const [s, rows] of Object.entries(PWHL_DATA)) {
+        rows.forEach(r => ts.add(r.team));
+      }
+      return [...ts].sort();
+    }
+
+    // ── Build team filter pills ─────────────────────────────────────
+    function buildTeamFilter() {
+      const wrap = document.getElementById("teamFilter");
+      wrap.innerHTML = "";
+      const teams = allTeams();
+      ["ALL", ...teams].forEach(t => {
+        const btn = document.createElement("button");
+        btn.className = "pill-btn" + (t === selectedTeam ? " active" : "");
+        btn.textContent = t === "ALL" ? "All" : t;
+        btn.dataset.team = t;
+        btn.addEventListener("click", () => {
+          selectedTeam = t;
+          wrap.querySelectorAll(".pill-btn").forEach(b => b.classList.toggle("active", b.dataset.team === t));
+          render();
+        });
+        wrap.appendChild(btn);
+      });
+    }
+
+    // ── Aggregate rows across selected seasons ───────────────────────
+    function aggregateRows() {
+      if (selectedSeasons.size === 0) return [];
+      const seasons = [...selectedSeasons];
+      const players = {};  // key = `${id}|${team}` → aggregated
+
+      seasons.forEach(s => {
+        const rows = PWHL_DATA[s] || [];
+        rows.forEach(r => {
+          const key = `${r.id}|${r.name}`;
+          if (!players[key]) {
+            players[key] = { ...r, _wars: [], _owars: [], _dwars: [], _seasons: [], _gp: 0 };
+          }
+          players[key]._wars.push(r.war);
+          players[key]._owars.push(r.owar);
+          players[key]._dwars.push(r.dwar);
+          players[key]._seasons.push(s);
+          players[key]._gp += r.gp;
+        });
+      });
+
+      return Object.values(players).map(p => ({
+        ...p,
+        war:  avg(p._wars),
+        owar: avg(p._owars),
+        dwar: avg(p._dwars),
+        gp:   p._gp,
+        seasons: p._seasons.sort(),
+      }));
+    }
+
+    function avg(arr) {
+      return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    }
+
+    // ── Filter ──────────────────────────────────────────────────────
+    function applyFilters(rows) {
+      return rows.filter(r => {
+        if (selectedTeam !== "ALL" && r.team !== selectedTeam) return false;
+        if (selectedPos  !== "ALL" && r.pos  !== selectedPos)  return false;
+        return true;
+      });
+    }
+
+    // ── Sort ────────────────────────────────────────────────────────
+    function applySort(rows) {
+      return [...rows].sort((a, b) => {
+        const va = a[sortCol], vb = b[sortCol];
+        if (typeof va === "string") return sortDir * va.localeCompare(vb);
+        return sortDir * (vb - va);
+      });
+    }
+
+    // ── Render ──────────────────────────────────────────────────────
+    function render() {
+      const agg    = aggregateRows();
+      const filt   = applyFilters(agg);
+      const sorted = applySort(filt);
+      const maxWar = sorted.length ? sorted[0].war : 1;
+
+      const tbody = document.getElementById("warBody");
+      if (sorted.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
+            </svg>
+            <p>No players match the current filters.</p>
+          </div></td></tr>`;
+      } else {
+        const multi = selectedSeasons.size > 1;
+        tbody.innerHTML = sorted.map((r, i) => {
+          const rank = i + 1;
+          const dCls = r.dwar >= 0 ? "dwar-pos" : "dwar-neg";
+          const dSign = r.dwar >= 0 ? "+" : "";
+          const barPct = Math.min(100, (r.war / maxWar) * 100).toFixed(1);
+          const seasonLabel = multi ? r.seasons.join(", ") : "";
+          return `
+            <tr>
+              <td class="td-rank${rank <= 3 ? " top3" : ""}">${rank}</td>
+              <td>
+                <div class="player-cell">
+                  <span class="player-name">${esc(r.name)}</span>
+                  ${seasonLabel ? `<span class="player-seasons">${seasonLabel}</span>` : ""}
+                </div>
+              </td>
+              <td><span class="team-chip">${esc(r.team)}</span></td>
+              <td><span class="pos-chip ${r.pos}">${r.pos}</span></td>
+              <td class="td-gp">${r.gp}</td>
+              <td class="td-owar">${r.owar.toFixed(3)}</td>
+              <td class="td-dwar ${dCls}">${dSign}${r.dwar.toFixed(3)}</td>
+              <td class="td-war">${r.war.toFixed(3)}</td>
+              <td class="war-bar-cell">
+                <div class="war-bar-wrap">
+                  <div class="war-bar" style="width:${barPct}%"></div>
+                </div>
+              </td>
+            </tr>`;
+        }).join("");
+      }
+
+      // Meta line
+      const multi = selectedSeasons.size > 1;
+      const sLabel = [...selectedSeasons].sort().map(s => s + "-" + String(parseInt(s)+1).slice(-2)).join(", ");
+      document.getElementById("warCount").innerHTML =
+        `<strong>${sorted.length}</strong> players · Season${selectedSeasons.size > 1 ? "s" : ""}: <strong>${sLabel}</strong>`;
+      document.getElementById("warNote").textContent =
+        multi ? "WAR averaged across selected seasons" : (selectedSeasons.has("2025") ? "2025 = partial season (61/120 games)" : "");
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // ── Season wheel ────────────────────────────────────────────────
+    document.getElementById("seasonWheel").addEventListener("click", e => {
+      const btn = e.target.closest(".season-btn");
+      if (!btn) return;
+      const s = btn.dataset.season;
+      if (selectedSeasons.has(s)) {
+        if (selectedSeasons.size === 1) return;  // keep at least 1
+        selectedSeasons.delete(s);
+        btn.classList.remove("active");
+      } else {
+        selectedSeasons.add(s);
+        btn.classList.add("active");
+      }
+      render();
+    });
+
+    // ── Position filter ──────────────────────────────────────────────
+    document.getElementById("posFilter").addEventListener("click", e => {
+      const btn = e.target.closest(".pos-btn");
+      if (!btn) return;
+      selectedPos = btn.dataset.pos;
+      document.querySelectorAll(".pos-btn").forEach(b => b.classList.toggle("active", b.dataset.pos === selectedPos));
+      render();
+    });
+
+    // ── Column sort ─────────────────────────────────────────────────
+    document.querySelectorAll("thead th[data-col]").forEach(th => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        if (sortCol === col) sortDir *= -1;
+        else { sortCol = col; sortDir = typeof PWHL_DATA["2025"][0]?.[col] === "string" ? 1 : -1; }
+        document.querySelectorAll("thead th").forEach(h => h.classList.remove("sorted-asc","sorted-desc"));
+        th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+        render();
+      });
+    });
+
+    // ── Init ────────────────────────────────────────────────────────
+    buildTeamFilter();
+    render();
+  })();
+  </script>
+</body>
+</html>

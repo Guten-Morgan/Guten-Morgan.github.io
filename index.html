@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Name | Data Science Portfolio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ===== NAVIGATION ===== -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-inner">
+      <a href="#about" class="nav-brand">
+        <span class="brand-name" id="navName">Your Name</span>
+        <span class="brand-sep">|</span>
+        <span class="brand-role" id="navRole">Data Scientist</span>
+      </a>
+      <ul class="nav-menu" id="navMenu">
+        <li><a href="#about"    class="nav-link active" data-nav="about">About</a></li>
+        <li><a href="#projects" class="nav-link"         data-nav="projects">Projects</a></li>
+        <li><a href="#blog"     class="nav-link"         data-nav="blog">Writing</a></li>
+        <li><a href="#resume"   class="nav-link"         data-nav="resume">Resume</a></li>
+        <li><a href="mailto:your@email.com" class="nav-cta" id="navContact">Contact</a></li>
+      </ul>
+      <button class="nav-hamburger" id="navHamburger" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ===== HERO / ABOUT ===== -->
+  <section id="about" class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-dots"></div>
+    <div class="container">
+      <div class="hero-grid">
+
+        <div class="hero-left fade-in">
+          <span class="hero-eyebrow">Welcome to my portfolio</span>
+          <h1 class="hero-name" id="heroName">Your Name</h1>
+          <p class="hero-subtitle" id="heroTitle">Data Scientist &amp; Analyst</p>
+          <p class="hero-bio" id="heroBio">
+            I transform complex data into actionable insights through statistical
+            analysis, machine learning, and thoughtful visualization.
+          </p>
+          <div class="skill-cloud" id="skillCloud"></div>
+          <div class="hero-btns">
+            <a href="#projects" class="btn-primary">View My Work</a>
+            <a href="#resume"   class="btn-outline">Resume</a>
+          </div>
+        </div>
+
+        <div class="hero-right fade-in" style="--delay: 0.15s">
+          <div class="portrait-wrap">
+            <div class="portrait" id="portrait">
+              <span class="portrait-initials" id="portraitInitials">YN</span>
+              <!--
+                To add your photo, remove the span above and add:
+                <img src="assets/photo.jpg" alt="Your Name">
+              -->
+            </div>
+            <div class="portrait-ring"></div>
+          </div>
+          <div class="stat-card" id="statCard">
+            <div class="stat-item">
+              <strong id="stat0Num">10+</strong>
+              <span id="stat0Lbl">Projects</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item">
+              <strong id="stat1Num">3+</strong>
+              <span id="stat1Lbl">Years Exp.</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="hero-scroll-cue">
+      <div class="scroll-dot"></div>
+    </div>
+  </section>
+
+  <!-- ===== PROJECTS ===== -->
+  <section id="projects" class="section">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Portfolio</span>
+        <h2 class="section-title">Projects</h2>
+        <p class="section-desc">A selection of my data science and analytics work</p>
+      </div>
+      <div class="filter-bar" id="filterBar">
+        <button class="filter-btn active" data-filter="all">All</button>
+      </div>
+      <div class="projects-grid" id="projectsGrid">
+        <!-- Rendered by main.js -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== BLOG / WRITING ===== -->
+  <section id="blog" class="section section-tinted">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Articles</span>
+        <h2 class="section-title">Writing</h2>
+        <p class="section-desc">Perspectives on data science, research, and methodology</p>
+      </div>
+      <div class="blog-grid" id="blogGrid">
+        <!-- Rendered by main.js -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== RESUME ===== -->
+  <section id="resume" class="section">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-label">Background</span>
+        <h2 class="section-title">Resume</h2>
+        <p class="section-desc">My education, experience, and technical skills</p>
+        <a href="assets/resume.pdf" download class="btn-primary resume-dl-btn">
+          &#x2193;&nbsp; Download PDF
+        </a>
+      </div>
+      <div class="resume-grid" id="resumeGrid">
+        <!-- Rendered by main.js -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <p class="footer-copy" id="footerCopy">&copy; 2026 Your Name. All rights reserved.</p>
+      <div class="footer-links" id="footerLinks">
+        <a href="#" class="footer-link">GitHub</a>
+        <a href="#" class="footer-link">LinkedIn</a>
+        <a href="#" class="footer-link">Email</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ===== BLOG POST MODAL ===== -->
+  <div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true">
+    <div class="modal" id="modal">
+      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
