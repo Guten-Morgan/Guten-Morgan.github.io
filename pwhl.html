@@ -149,7 +149,7 @@
     thead th.sorted-asc::after  { content: " ▲"; opacity: .8; }
     thead th.sorted-desc::after { content: " ▼"; opacity: .8; }
     thead th.th-rank, thead th.th-gp { text-align: center; }
-    thead th.th-war, thead th.th-owar, thead th.th-dwar { text-align: right; }
+    thead th.th-war, thead th.th-owar, thead th.th-dwar, thead th.th-war60 { text-align: right; }
 
     tbody tr {
       border-bottom: 1px solid var(--border);
@@ -185,10 +185,11 @@
     .pos-chip.F { background: #FEF3C7; color: #92400E; }
     .pos-chip.D { background: #DBEAFE; color: #1E40AF; }
 
-    td.td-war, td.td-owar, td.td-dwar {
+    td.td-war, td.td-owar, td.td-dwar, td.td-war60 {
       text-align: right; font-variant-numeric: tabular-nums; font-weight: 500;
     }
     td.td-war { font-weight: 700; }
+    td.td-war60 { color: var(--text-2); font-size: .88rem; }
     .war-bar-cell { width: 120px; }
     .war-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
     .war-bar      { height: 100%; background: var(--gold); border-radius: 3px; transition: width .4s ease; }
@@ -367,6 +368,7 @@
               <th class="th-owar" data-col="owar">oWAR</th>
               <th class="th-dwar" data-col="dwar">dWAR</th>
               <th class="th-war sorted-desc" data-col="war">WAR</th>
+              <th class="th-war60" data-col="war60" title="WAR per 60 minutes — on-ice quality independent of ice time">WAR/60</th>
               <th class="th-bar war-bar-cell"></th>
             </tr>
           </thead>
@@ -378,9 +380,11 @@
         <strong>Method:</strong>
         Offensive value = individual xG per 60 min (EV + PP + SH).
         Defensive value = residual plus/minus per 60 min (OLS-orthogonalized to remove offensive contamination), weighted at 0.1.
-        Replacement level = 20th percentile of each component.
+        WAR = oWAR + dWAR (signed — good defense adds value, poor defense subtracts).
+        Replacement level = 25th percentile of each component.
+        WAR/60 = WAR per 60 minutes of ice time, capturing on-ice quality independent of playing time.
         Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
-        When multiple seasons are selected, WAR is averaged across seasons played.
+        When multiple seasons are selected, WAR and WAR/60 are averaged across seasons played.
         <strong>2025 season is partial</strong> (61/120 games) and uses an approximated xG model from shot-quality categories.
       </div>
     </div>
@@ -420,7 +424,7 @@
       "Seattle Torrent":"SEA","Vancouver Goldeneyes":"VAN",
     };
     const MIN_TOI   = 25;
-    const REPL_PCT  = 20;
+    const REPL_PCT  = 25;
     const DEF_W     = 0.1;
 
     // ── Maths helpers ────────────────────────────────────────────
@@ -503,21 +507,23 @@
       rows.forEach(p => {
         p.oGAR = (p.o_xG60  - o_repl) * p.toi / 60;
         p.dGAR = (p.d_val60 - d_repl) * p.toi / 60;
-        p.oWAR = p.oGAR / gpw;
-        p.dWAR = p.dGAR / gpw;
-        p.WAR  = p.oWAR + Math.abs(p.dWAR);
+        p.oWAR  = p.oGAR / gpw;
+        p.dWAR  = p.dGAR / gpw;
+        p.WAR   = p.oWAR + p.dWAR;
+        p.WAR60 = p.toi > 0.1 ? (p.WAR / p.toi * 60) : 0;
       });
 
       return rows.map(p => ({
-        id:   p.id,
-        name: p.name,
-        team: p.team,
-        pos:  p.pos,
-        gp:   p.gp,
-        toi:  Math.round(p.toi*10)/10,
-        war:  Math.round(p.WAR*1000)/1000,
-        owar: Math.round(p.oWAR*1000)/1000,
-        dwar: Math.round(p.dWAR*1000)/1000,
+        id:    p.id,
+        name:  p.name,
+        team:  p.team,
+        pos:   p.pos,
+        gp:    p.gp,
+        toi:   Math.round(p.toi*10)/10,
+        war:   Math.round(p.WAR*1000)/1000,
+        owar:  Math.round(p.oWAR*1000)/1000,
+        dwar:  Math.round(p.dWAR*1000)/1000,
+        war60: Math.round(p.WAR60*1000)/1000,
       }));
     }
 
@@ -708,11 +714,12 @@
         rows.forEach(r => {
           const key = `${r.id}|${r.name}`;
           if (!players[key]) {
-            players[key] = { ...r, _wars: [], _owars: [], _dwars: [], _seasons: [], _gp: 0 };
+            players[key] = { ...r, _wars: [], _owars: [], _dwars: [], _war60s: [], _seasons: [], _gp: 0 };
           }
           players[key]._wars.push(r.war);
           players[key]._owars.push(r.owar);
           players[key]._dwars.push(r.dwar);
+          players[key]._war60s.push(r.war60 ?? 0);
           players[key]._seasons.push(s);
           players[key]._gp += r.gp;
         });
@@ -720,10 +727,11 @@
 
       return Object.values(players).map(p => ({
         ...p,
-        war:  avg(p._wars),
-        owar: avg(p._owars),
-        dwar: avg(p._dwars),
-        gp:   p._gp,
+        war:   avg(p._wars),
+        owar:  avg(p._owars),
+        dwar:  avg(p._dwars),
+        war60: avg(p._war60s),
+        gp:    p._gp,
         seasons: p._seasons.sort(),
       }));
     }
@@ -759,7 +767,7 @@
 
       const tbody = document.getElementById("warBody");
       if (sorted.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9">
+        tbody.innerHTML = `<tr><td colspan="10">
           <div class="empty-state">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
@@ -789,6 +797,7 @@
               <td class="td-owar">${r.owar.toFixed(3)}</td>
               <td class="td-dwar ${dCls}">${dSign}${r.dwar.toFixed(3)}</td>
               <td class="td-war">${r.war.toFixed(3)}</td>
+              <td class="td-war60">${(r.war60 ?? 0).toFixed(3)}</td>
               <td class="war-bar-cell">
                 <div class="war-bar-wrap">
                   <div class="war-bar" style="width:${barPct}%"></div>
