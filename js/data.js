@@ -41,7 +41,7 @@ const DATA = {
 
   // Social / contact links  (set to null to hide)
   github:   "https://github.com/Guten-Morgan",
-  linkedin: null,
+  linkedin: "https://www.linkedin.com/in/morgan-burden-93696883/",
   email:    "morganmburden@gmail.com",
 
 
