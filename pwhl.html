@@ -190,6 +190,28 @@
     }
     td.td-war { font-weight: 700; }
     td.td-war60 { color: var(--text-2); font-size: .88rem; }
+
+    /* ── Scatter chart ───────────────────────────────────────── */
+    .war-chart-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 24px 16px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+    .chart-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      flex-wrap: wrap; gap: .5rem;
+      margin-bottom: 16px;
+    }
+    .chart-title {
+      font-size: .78rem; font-weight: 700; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--text-2);
+    }
+    .chart-hint {
+      font-size: .73rem; color: var(--text-3);
+    }
     .war-bar-cell { width: 120px; }
     .war-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
     .war-bar      { height: 100%; background: var(--gold); border-radius: 3px; transition: width .4s ease; }
@@ -356,6 +378,14 @@
         <p class="war-note" id="warNote"></p>
       </div>
 
+      <div class="war-chart-wrap">
+        <div class="chart-header">
+          <span class="chart-title">WAR vs xG/60</span>
+          <span class="chart-hint">Top-left = high rate, limited ice time &nbsp;·&nbsp; Top-right = elite</span>
+        </div>
+        <canvas id="warChartCanvas"></canvas>
+      </div>
+
       <div class="table-wrap">
         <table id="warTable">
           <thead>
@@ -399,6 +429,7 @@
     </div>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="js/pwhl-data.js"></script>
   <script>
   // ════════════════════════════════════════════════════════════════
@@ -762,6 +793,7 @@
       const agg    = aggregateRows();
       const filt   = applyFilters(agg);
       const sorted = applySort(filt);
+      renderChart(filt);
       const maxWar = sorted.length ? sorted[0].war : 1;
 
       const tbody = document.getElementById("warBody");
@@ -817,6 +849,131 @@
 
     function esc(s) {
       return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    // ── Scatter chart ────────────────────────────────────────────────
+    let warChart = null;
+
+    function renderChart(rows) {
+      const canvas = document.getElementById("warChartCanvas");
+      if (!canvas) return;
+
+      if (warChart) { warChart.destroy(); warChart = null; }
+      if (!rows.length) return;
+
+      const fRows = rows.filter(r => r.pos === "F");
+      const dRows = rows.filter(r => r.pos === "D");
+      const toPoint = r => ({ x: r.war, y: r.oxg60 ?? 0, name: r.name, team: r.team });
+
+      const allX   = rows.map(r => r.war);
+      const allY   = rows.map(r => r.oxg60 ?? 0);
+      const minX   = Math.min(...allX, -0.05) - 0.12;
+      const maxX   = Math.max(...allX,  0.05) + 0.12;
+      const minY   = Math.max(0, Math.min(...allY) - 0.05);
+      const maxY   = Math.max(...allY) + 0.12;
+      const avgY   = allY.reduce((a, b) => a + b, 0) / allY.length;
+
+      // Quadrant label plugin (drawn on the canvas after Chart.js renders)
+      const quadPlugin = {
+        id: "quadLabels",
+        afterDraw(chart) {
+          const { ctx, chartArea: ca, scales: { x, y } } = chart;
+          const x0  = x.getPixelForValue(0);
+          const yA  = y.getPixelForValue(avgY);
+          ctx.save();
+          ctx.font = "10px Inter, sans-serif";
+          ctx.fillStyle = "rgba(140,140,140,0.75)";
+          // Top-left quadrant label
+          ctx.textAlign = "left";
+          if (x0 - ca.left > 80)
+            ctx.fillText("High rate, low TOI", ca.left + 6, ca.top + 14);
+          // Top-right quadrant label
+          ctx.textAlign = "right";
+          if (ca.right - x0 > 60)
+            ctx.fillText("Elite", ca.right - 6, ca.top + 14);
+          ctx.restore();
+        }
+      };
+
+      warChart = new Chart(canvas.getContext("2d"), {
+        type: "scatter",
+        plugins: [quadPlugin],
+        data: {
+          datasets: [
+            {
+              label: "Forwards",
+              data: fRows.map(toPoint),
+              backgroundColor: "rgba(43,82,182,0.5)",
+              borderColor:     "rgba(43,82,182,0.8)",
+              pointRadius: 5, pointHoverRadius: 7,
+            },
+            {
+              label: "Defense",
+              data: dRows.map(toPoint),
+              backgroundColor: "rgba(207,181,59,0.6)",
+              borderColor:     "rgba(170,145,30,0.9)",
+              pointRadius: 5, pointHoverRadius: 7,
+            },
+            // WAR = 0 vertical reference line
+            {
+              type: "line", label: "_v",
+              data: [{ x: 0, y: minY }, { x: 0, y: maxY }],
+              borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
+              borderDash: [5, 4], pointRadius: 0, fill: false,
+            },
+            // avg xG/60 horizontal reference line
+            {
+              type: "line", label: "_h",
+              data: [{ x: minX, y: avgY }, { x: maxX, y: avgY }],
+              borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
+              borderDash: [5, 4], pointRadius: 0, fill: false,
+            },
+          ]
+        },
+        options: {
+          responsive: true,
+          aspectRatio: 2.2,
+          interaction: { mode: "nearest", intersect: true },
+          plugins: {
+            legend: {
+              position: "top",
+              labels: {
+                filter: item => !item.text.startsWith("_"),
+                boxWidth: 10, padding: 14,
+                font: { size: 11, family: "Inter, sans-serif" },
+                color: "#555",
+              }
+            },
+            tooltip: {
+              callbacks: {
+                title: () => "",
+                label: ctx => {
+                  const d = ctx.raw;
+                  return [
+                    `${d.name}  ·  ${d.team}`,
+                    `WAR: ${d.x.toFixed(3)}`,
+                    `xG/60: ${d.y.toFixed(3)}`,
+                  ];
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              min: minX, max: maxX,
+              title: { display: true, text: "WAR", font: { size: 11 }, color: "#999" },
+              grid: { color: "rgba(0,0,0,0.05)" },
+              ticks: { font: { size: 11 }, color: "#888" },
+            },
+            y: {
+              min: minY, max: maxY,
+              title: { display: true, text: "xG / 60 min", font: { size: 11 }, color: "#999" },
+              grid: { color: "rgba(0,0,0,0.05)" },
+              ticks: { font: { size: 11 }, color: "#888" },
+            }
+          }
+        }
+      });
     }
 
     // ── Season wheel ────────────────────────────────────────────────
