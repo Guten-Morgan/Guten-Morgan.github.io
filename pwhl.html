@@ -409,7 +409,7 @@
       <div class="method-card">
         <strong>Method:</strong>
         Offensive value = individual xG per 60 min (EV + PP + SH).
-        Defensive value = residual plus/minus per 60 min (OLS-orthogonalized to remove offensive contamination), weighted at 0.1.
+        Defensive value = residual plus/minus per 60 min (OLS-orthogonalized vs individual offense, then team-adjusted to remove linemate quality effects), weighted at 0.36.
         WAR = oWAR + dWAR (signed — good defense adds value, poor defense subtracts).
         Replacement level = 25th percentile of each component.
         xG/60 = individual offensive expected goals per 60 min — pure shot-generation rate, independent of ice time and the defensive component, so it ranks differently from WAR.
@@ -523,6 +523,18 @@
 
       rows.forEach(p => {
         p.pm60_resid = p.pm60 - (intercept + slope*p.o_xG60);
+      });
+
+      // Team-adjust: subtract each team's TOI-weighted mean residual
+      // so dWAR reflects performance vs teammates, not team quality.
+      const teams = [...new Set(qual.map(p=>p.team))];
+      const teamResid = {};
+      teams.forEach(t => {
+        const tq = qual.filter(p=>p.team===t);
+        teamResid[t] = wMean(tq.map(p=>p.pm60_resid), tq.map(p=>p.toi));
+      });
+      rows.forEach(p => {
+        p.pm60_resid = p.pm60_resid - (teamResid[p.team] ?? 0);
       });
 
       const leagueResid = wMean(qual.map(p=>p.pm60_resid), qual.map(p=>p.toi));
