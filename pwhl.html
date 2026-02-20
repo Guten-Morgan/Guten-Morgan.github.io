@@ -381,7 +381,7 @@
       <div class="war-chart-wrap">
         <div class="chart-header">
           <span class="chart-title">WAR vs xG/60</span>
-          <span class="chart-hint">Dashed lines = median WAR &amp; median xG/60 &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
+          <span class="chart-hint">Dashed lines = median + 1 SD (all season players) &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
         </div>
         <canvas id="warChartCanvas"></canvas>
       </div>
@@ -793,7 +793,7 @@
       const agg    = aggregateRows();
       const filt   = applyFilters(agg);
       const sorted = applySort(filt);
-      renderChart(filt);
+      renderChart(filt, agg);
       const maxWar = sorted.length ? sorted[0].war : 1;
 
       const tbody = document.getElementById("warBody");
@@ -854,7 +854,7 @@
     // ── Scatter chart ────────────────────────────────────────────────
     let warChart = null;
 
-    function renderChart(rows) {
+    function renderChart(rows, allRows) {
       const canvas = document.getElementById("warChartCanvas");
       if (!canvas) return;
 
@@ -868,6 +868,10 @@
       const chartMinToi = only2025 ? 50 : 100;
       const chartRows = rows.filter(r => r.toi >= chartMinToi);
       if (!chartRows.length) return;
+
+      // Baseline pool: all season players (ignores team/pos filter) at same TOI floor
+      // → thresholds stay fixed when drilling into a single team
+      const baseRows = (allRows || chartRows).filter(r => r.toi >= chartMinToi);
 
       const fRows = chartRows.filter(r => r.pos === "F");
       const dRows = chartRows.filter(r => r.pos === "D");
@@ -885,30 +889,38 @@
         const m = Math.floor(s.length / 2);
         return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
       }
-      const medX = median(allX);
-      const medY = median(allY);
+      function stddev(arr) {
+        const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+        return Math.sqrt(arr.reduce((a, b) => a + (b - m) ** 2, 0) / arr.length);
+      }
+
+      // Thresholds: 1 std above the median, computed from full season pool
+      const baseX  = baseRows.map(r => r.war);
+      const baseY  = baseRows.map(r => r.oxg60 ?? 0);
+      const threshX = median(baseX) + stddev(baseX);
+      const threshY = median(baseY) + stddev(baseY);
 
       // Quadrant label plugin (drawn on the canvas after Chart.js renders)
       const quadPlugin = {
         id: "quadLabels",
         afterDraw(chart) {
           const { ctx, chartArea: ca, scales: { x, y } } = chart;
-          const xMed = x.getPixelForValue(medX);
-          const yMed = y.getPixelForValue(medY);
+          const xT = x.getPixelForValue(threshX);
+          const yT = y.getPixelForValue(threshY);
           ctx.save();
           ctx.font = "10px Inter, sans-serif";
           ctx.fillStyle = "rgba(140,140,140,0.75)";
           const PAD = 7;
-          // Top-left: above median xG/60, below median WAR
+          // Top-left: high xG/60, below WAR threshold → High Efficiency
           ctx.textAlign = "left";
           ctx.fillText("High Efficiency", ca.left + PAD, ca.top + 14);
-          // Top-right: above median xG/60, above median WAR
+          // Top-right: high xG/60, above WAR threshold → Elite
           ctx.textAlign = "right";
           ctx.fillText("Elite", ca.right - PAD, ca.top + 14);
-          // Bottom-left: below median xG/60, below median WAR
+          // Bottom-left: low xG/60, below WAR threshold → Bench Player
           ctx.textAlign = "left";
           ctx.fillText("Bench Player", ca.left + PAD, ca.bottom - PAD);
-          // Bottom-right: below median xG/60, above median WAR
+          // Bottom-right: low xG/60, above WAR threshold → Low Efficiency
           ctx.textAlign = "right";
           ctx.fillText("Low Efficiency", ca.right - PAD, ca.bottom - PAD);
           ctx.restore();
@@ -934,17 +946,17 @@
               borderColor:     "rgba(170,145,30,0.9)",
               pointRadius: 5, pointHoverRadius: 7,
             },
-            // Median WAR vertical reference line
+            // WAR threshold (median + 1 SD) vertical reference line
             {
               type: "line", label: "_v",
-              data: [{ x: medX, y: minY }, { x: medX, y: maxY }],
+              data: [{ x: threshX, y: minY }, { x: threshX, y: maxY }],
               borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
               borderDash: [5, 4], pointRadius: 0, fill: false,
             },
-            // Median xG/60 horizontal reference line
+            // xG/60 threshold (median + 1 SD) horizontal reference line
             {
               type: "line", label: "_h",
-              data: [{ x: minX, y: medY }, { x: maxX, y: medY }],
+              data: [{ x: minX, y: threshY }, { x: maxX, y: threshY }],
               borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
               borderDash: [5, 4], pointRadius: 0, fill: false,
             },
