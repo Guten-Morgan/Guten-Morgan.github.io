@@ -368,7 +368,7 @@
               <th class="th-owar" data-col="owar">oWAR</th>
               <th class="th-dwar" data-col="dwar">dWAR</th>
               <th class="th-war sorted-desc" data-col="war">WAR</th>
-              <th class="th-war60" data-col="war60" title="WAR per 60 minutes — on-ice quality independent of ice time">WAR/60</th>
+              <th class="th-war60" data-col="oxg60" title="Offensive expected goals per 60 min — shot-generation rate, independent of ice time and defense">xG/60</th>
               <th class="th-bar war-bar-cell"></th>
             </tr>
           </thead>
@@ -382,9 +382,9 @@
         Defensive value = residual plus/minus per 60 min (OLS-orthogonalized to remove offensive contamination), weighted at 0.1.
         WAR = oWAR + dWAR (signed — good defense adds value, poor defense subtracts).
         Replacement level = 25th percentile of each component.
-        WAR/60 = WAR per 60 minutes of ice time, capturing on-ice quality independent of playing time.
+        xG/60 = individual offensive expected goals per 60 min — pure shot-generation rate, independent of ice time and the defensive component, so it ranks differently from WAR.
         Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
-        When multiple seasons are selected, WAR and WAR/60 are averaged across seasons played.
+        When multiple seasons are selected, WAR and xG/60 are averaged across seasons played.
         <strong>2025 season is partial</strong> (61/120 games) and uses an approximated xG model from shot-quality categories.
       </div>
     </div>
@@ -507,10 +507,9 @@
       rows.forEach(p => {
         p.oGAR = (p.o_xG60  - o_repl) * p.toi / 60;
         p.dGAR = (p.d_val60 - d_repl) * p.toi / 60;
-        p.oWAR  = p.oGAR / gpw;
-        p.dWAR  = p.dGAR / gpw;
-        p.WAR   = p.oWAR + p.dWAR;
-        p.WAR60 = p.toi > 0.1 ? (p.WAR / p.toi * 60) : 0;
+        p.oWAR = p.oGAR / gpw;
+        p.dWAR = p.dGAR / gpw;
+        p.WAR  = p.oWAR + p.dWAR;
       });
 
       return rows.map(p => ({
@@ -523,7 +522,7 @@
         war:   Math.round(p.WAR*1000)/1000,
         owar:  Math.round(p.oWAR*1000)/1000,
         dwar:  Math.round(p.dWAR*1000)/1000,
-        war60: Math.round(p.WAR60*1000)/1000,
+        oxg60: Math.round(p.o_xG60*1000)/1000,
       }));
     }
 
@@ -714,12 +713,12 @@
         rows.forEach(r => {
           const key = `${r.id}|${r.name}`;
           if (!players[key]) {
-            players[key] = { ...r, _wars: [], _owars: [], _dwars: [], _war60s: [], _seasons: [], _gp: 0 };
+            players[key] = { ...r, _wars: [], _owars: [], _dwars: [], _oxg60s: [], _seasons: [], _gp: 0 };
           }
           players[key]._wars.push(r.war);
           players[key]._owars.push(r.owar);
           players[key]._dwars.push(r.dwar);
-          players[key]._war60s.push(r.war60 ?? 0);
+          players[key]._oxg60s.push(r.oxg60 ?? 0);
           players[key]._seasons.push(s);
           players[key]._gp += r.gp;
         });
@@ -730,7 +729,7 @@
         war:   avg(p._wars),
         owar:  avg(p._owars),
         dwar:  avg(p._dwars),
-        war60: avg(p._war60s),
+        oxg60: avg(p._oxg60s),
         gp:    p._gp,
         seasons: p._seasons.sort(),
       }));
@@ -797,7 +796,7 @@
               <td class="td-owar">${r.owar.toFixed(3)}</td>
               <td class="td-dwar ${dCls}">${dSign}${r.dwar.toFixed(3)}</td>
               <td class="td-war">${r.war.toFixed(3)}</td>
-              <td class="td-war60">${(r.war60 ?? 0).toFixed(3)}</td>
+              <td class="td-war60">${(r.oxg60 ?? 0).toFixed(3)}</td>
               <td class="war-bar-cell">
                 <div class="war-bar-wrap">
                   <div class="war-bar" style="width:${barPct}%"></div>
