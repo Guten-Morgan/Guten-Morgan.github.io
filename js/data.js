@@ -18,30 +18,31 @@
 const DATA = {
 
   // ─── PERSONAL INFO ────────────────────────────────────────────────────
-  name:     "Your Name",
-  title:    "Data Scientist & Analyst",
-  bio:      "I transform complex data into actionable insights through statistical " +
-            "analysis, machine learning, and thoughtful visualization. Currently " +
-            "pursuing my graduate degree in Data Science, specializing in " +
-            "predictive modeling and sports analytics.",
-  initials: "YN",          // Shown in the portrait circle until you add a photo
+  name:     "Morgan M. Burden",
+  title:    "Data Scientist & Business Analyst",
+  bio:      "Business analyst with a strong focus on data-driven solutions, currently " +
+            "pursuing a Master's in Data Science. Skilled in translating complex business " +
+            "needs into actionable insights, collaborating across teams, and delivering " +
+            "analytics-backed results. Passionate about leveraging data to drive strategic " +
+            "decisions and enhance user experiences.",
+  initials: "MB",
 
   // Two stat bubbles shown in the hero
   stats: [
-    { number: "10+", label: "Projects"  },
-    { number: "3+",  label: "Years Exp." }
+    { number: "5+",  label: "Years Exp." },
+    { number: "MS",  label: "Data Science" }
   ],
 
   // Skill pills in the hero section
   skills: [
-    "Python", "R", "Machine Learning", "SQL",
-    "PyTorch", "Scikit-learn", "Statistics", "Data Visualization"
+    "Python", "R", "SQL", "Tableau",
+    "Data Analytics", "Agile / Scrum", "Stakeholder Communication", "SAP"
   ],
 
   // Social / contact links  (set to null to hide)
-  github:   "https://github.com/yourusername",
-  linkedin: "https://linkedin.com/in/yourprofile",
-  email:    "your.email@example.com",
+  github:   "https://github.com/Guten-Morgan",
+  linkedin: null,
+  email:    "morganmburden@gmail.com",
 
 
   // ─── PROJECTS ─────────────────────────────────────────────────────────
@@ -187,51 +188,78 @@ const DATA = {
     education: [
       {
         degree:  "Master of Science, Data Science",
-        school:  "Your University",
-        period:  "Expected May 2026",
-        details: "Relevant coursework: Machine Learning, Statistical Modeling, " +
-                 "Data Visualization, Big Data Systems, Natural Language Processing."
+        school:  "University of St Thomas — St. Paul, MN",
+        period:  "In Progress",
+        details: "Coursework: Python, SQL & Database Management, Data Warehousing. " +
+                 "Focus areas: analytics platforms, data modeling, modern data stacks."
       },
       {
-        degree:  "Bachelor of Science, Statistics",
-        school:  "Your University",
-        period:  "May 2024",
-        details: "Graduated with Honors. Minor in Computer Science. " +
-                 "Dean's List every semester."
+        degree:  "Bachelor of Science, Economics & Global Resource Systems",
+        school:  "Iowa State University — Ames, IA",
+        period:  "May 2017",
+        details: "Courses in Statistics, Economic Development, and Econometrics."
       }
     ],
 
     experience: [
       {
-        title:   "Data Science Intern",
-        company: "Company Name",
-        period:  "Summer 2025",
+        title:   "Lead Customer Support Analyst",
+        company: "SPS Commerce — Minneapolis, MN",
+        period:  "June 2024 – Present",
         bullets: [
-          "Developed predictive models that improved forecast accuracy by 15% over baseline",
-          "Built automated ETL pipelines processing 1 M+ records daily using Python and SQL",
-          "Presented findings and model recommendations to a senior leadership team of 20+",
-          "Collaborated with cross-functional teams to define KPIs and evaluation criteria"
+          "Act as a cross-functional liaison between Customer Support, Product, and Customer Success teams to ensure successful adoption of Fulfillment feature upgrades and platform enhancements",
+          "Introduced support process improvements that reduced team Time to Resolution by 40%, directly improving operational KPIs",
+          "Lead the NetX support team through escalations, prioritization, and stakeholder communication, ensuring high-quality delivery and alignment with business goals",
+          "Partner with technical teams to ensure product issues are accurately captured, translated into actionable requirements, and resolved efficiently"
         ]
       },
       {
-        title:   "Research Assistant",
-        company: "Dept. of Statistics, Your University",
-        period:  "2023 – 2024",
+        title:   "HR Analyst",
+        company: "Tennant Company — Eden Prairie, MN",
+        period:  "Oct 2023 – June 2024",
         bullets: [
-          "Assisted faculty with statistical analyses for two peer-reviewed publications",
-          "Wrote and maintained R scripts for data cleaning and Monte Carlo simulations",
-          "Contributed to a grant proposal that resulted in $50 K in external funding"
+          "Managed large-scale data uploads and governance processes within SAP, ensuring data quality and compliance across HR systems",
+          "Managed mass data uploads including the annual merit process",
+          "Developed HR dashboards and analytics to support business decision-making"
+        ]
+      },
+      {
+        title:   "Employee Experience Business Analyst",
+        company: "Allina Health — Minneapolis, MN (Contract)",
+        period:  "Oct 2022 – Feb 2023",
+        bullets: [
+          "Planned and led design and implementation of UX/UI improvements that increased access to information and usability for all users",
+          "Tested SharePoint upgrades using test scripts and user acceptance testing for more efficient and productive testing",
+          "Operated in an Agile workspace defining user stories, requirements, and working through the Azure DevOps backlog"
+        ]
+      },
+      {
+        title:   "Associate Business Analyst",
+        company: "SPS Commerce — Minneapolis, MN",
+        period:  "July 2021 – Oct 2022",
+        bullets: [
+          "Designed and maintained retail data and EDI products supporting vendor communities, ensuring alignment with retailer requirements and industry standards",
+          "Served as the technical lead and primary point of contact for retailer-focused product initiatives, managing communication between engineering, solution architects, and business stakeholders"
+        ]
+      },
+      {
+        title:   "Data & Requirements Analyst",
+        company: "Cargill — Hopkins, MN",
+        period:  "",
+        bullets: [
+          "Provided data and requirements to build out multi-million-dollar meat processing plants",
+          "Analyzed decades of financial data to provide actionable insights"
         ]
       }
-      // ➕  Add more experience blocks here
     ],
 
     skills: {
-      "Programming":   ["Python", "R", "SQL", "Julia", "Bash"],
-      "ML / AI":       ["Scikit-learn", "PyTorch", "TensorFlow", "XGBoost", "LightGBM"],
-      "Data Tools":    ["Pandas", "NumPy", "Spark", "dbt", "Airflow"],
-      "Visualization": ["Matplotlib", "Seaborn", "Plotly", "ggplot2", "Tableau"],
-      "Dev Tools":     ["Git", "Docker", "VS Code", "Jupyter", "Linux / Bash"]
+      "Product & Agile":   ["Product Ownership", "Roadmapping", "User Stories & Requirements",
+                            "Agile / Scrum", "Stakeholder Communication", "Backlog Management"],
+      "Data & Technical":  ["SQL", "Python", "R", "Tableau", "Analytics & Dashboards",
+                            "Data Quality & Validation"],
+      "Tools & Platforms": ["Azure DevOps", "EDI Platforms & Retail Data", "Salesforce",
+                            "SAP", "SharePoint", "Microsoft Office"]
     },
 
     // Leave as empty [] if you have no publications
