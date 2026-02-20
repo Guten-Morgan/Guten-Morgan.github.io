@@ -381,7 +381,7 @@
       <div class="war-chart-wrap">
         <div class="chart-header">
           <span class="chart-title">WAR vs xG/60</span>
-          <span class="chart-hint">Top-left = high rate, limited ice time &nbsp;·&nbsp; Top-right = elite</span>
+          <span class="chart-hint">Top-left = high rate, limited ice time &nbsp;·&nbsp; Top-right = elite &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
         </div>
         <canvas id="warChartCanvas"></canvas>
       </div>
@@ -861,12 +861,20 @@
       if (warChart) { warChart.destroy(); warChart = null; }
       if (!rows.length) return;
 
-      const fRows = rows.filter(r => r.pos === "F");
-      const dRows = rows.filter(r => r.pos === "D");
+      // Double the data-generation TOI floor to filter outliers from the chart
+      // 2025-26 (partial) was generated at 25 min → chart uses 50 min
+      // Full seasons were generated at 50 min → chart uses 100 min
+      const only2025 = selectedSeasons.size === 1 && selectedSeasons.has("2025");
+      const chartMinToi = only2025 ? 50 : 100;
+      const chartRows = rows.filter(r => r.toi >= chartMinToi);
+      if (!chartRows.length) return;
+
+      const fRows = chartRows.filter(r => r.pos === "F");
+      const dRows = chartRows.filter(r => r.pos === "D");
       const toPoint = r => ({ x: r.war, y: r.oxg60 ?? 0, name: r.name, team: r.team });
 
-      const allX   = rows.map(r => r.war);
-      const allY   = rows.map(r => r.oxg60 ?? 0);
+      const allX   = chartRows.map(r => r.war);
+      const allY   = chartRows.map(r => r.oxg60 ?? 0);
       const minX   = Math.min(...allX, -0.05) - 0.12;
       const maxX   = Math.max(...allX,  0.05) + 0.12;
       const minY   = Math.max(0, Math.min(...allY) - 0.05);
