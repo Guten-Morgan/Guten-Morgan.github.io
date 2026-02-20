@@ -381,7 +381,7 @@
       <div class="war-chart-wrap">
         <div class="chart-header">
           <span class="chart-title">WAR vs xG/60</span>
-          <span class="chart-hint">Top-left = high rate, limited ice time &nbsp;·&nbsp; Top-right = elite &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
+          <span class="chart-hint">Dashed lines = median WAR &amp; median xG/60 &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
         </div>
         <canvas id="warChartCanvas"></canvas>
       </div>
@@ -879,26 +879,38 @@
       const maxX   = Math.max(...allX,  0.05) + 0.12;
       const minY   = Math.max(0, Math.min(...allY) - 0.05);
       const maxY   = Math.max(...allY) + 0.12;
-      const avgY   = allY.reduce((a, b) => a + b, 0) / allY.length;
+
+      function median(arr) {
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+      }
+      const medX = median(allX);
+      const medY = median(allY);
 
       // Quadrant label plugin (drawn on the canvas after Chart.js renders)
       const quadPlugin = {
         id: "quadLabels",
         afterDraw(chart) {
           const { ctx, chartArea: ca, scales: { x, y } } = chart;
-          const x0  = x.getPixelForValue(0);
-          const yA  = y.getPixelForValue(avgY);
+          const xMed = x.getPixelForValue(medX);
+          const yMed = y.getPixelForValue(medY);
           ctx.save();
           ctx.font = "10px Inter, sans-serif";
           ctx.fillStyle = "rgba(140,140,140,0.75)";
-          // Top-left quadrant label
+          const PAD = 7;
+          // Top-left: above median xG/60, below median WAR
           ctx.textAlign = "left";
-          if (x0 - ca.left > 80)
-            ctx.fillText("High rate, low TOI", ca.left + 6, ca.top + 14);
-          // Top-right quadrant label
+          ctx.fillText("High Efficiency", ca.left + PAD, ca.top + 14);
+          // Top-right: above median xG/60, above median WAR
           ctx.textAlign = "right";
-          if (ca.right - x0 > 60)
-            ctx.fillText("Elite", ca.right - 6, ca.top + 14);
+          ctx.fillText("Elite", ca.right - PAD, ca.top + 14);
+          // Bottom-left: below median xG/60, below median WAR
+          ctx.textAlign = "left";
+          ctx.fillText("Bench Player", ca.left + PAD, ca.bottom - PAD);
+          // Bottom-right: below median xG/60, above median WAR
+          ctx.textAlign = "right";
+          ctx.fillText("Low Efficiency", ca.right - PAD, ca.bottom - PAD);
           ctx.restore();
         }
       };
@@ -922,17 +934,17 @@
               borderColor:     "rgba(170,145,30,0.9)",
               pointRadius: 5, pointHoverRadius: 7,
             },
-            // WAR = 0 vertical reference line
+            // Median WAR vertical reference line
             {
               type: "line", label: "_v",
-              data: [{ x: 0, y: minY }, { x: 0, y: maxY }],
+              data: [{ x: medX, y: minY }, { x: medX, y: maxY }],
               borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
               borderDash: [5, 4], pointRadius: 0, fill: false,
             },
-            // avg xG/60 horizontal reference line
+            // Median xG/60 horizontal reference line
             {
               type: "line", label: "_h",
-              data: [{ x: minX, y: avgY }, { x: maxX, y: avgY }],
+              data: [{ x: minX, y: medY }, { x: maxX, y: medY }],
               borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
               borderDash: [5, 4], pointRadius: 0, fill: false,
             },
