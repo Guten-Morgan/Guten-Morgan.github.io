@@ -457,6 +457,8 @@
     const MIN_TOI   = 25;
     const REPL_PCT  = 25;
     const DEF_W     = 0.36;
+    const BLOCK_W   = 0.04;
+    const HT_KEY    = "446521baf8c38984";
 
     // ── Maths helpers ────────────────────────────────────────────
     function pctile(arr, p) {
@@ -508,7 +510,7 @@
     }
 
     // ── Compute WAR from aggregated player map ───────────────────
-    function computeWAR(players, gpw) {
+    function computeWAR(players, gpw, blocksMap = {}) {
       const rows = Object.values(players).filter(p => p.pos!=="G");
 
       rows.forEach(p => {
@@ -539,8 +541,35 @@
 
       const leagueResid = wMean(qual.map(p=>p.pm60_resid), qual.map(p=>p.toi));
       rows.forEach(p => {
-        p.d_adj  = p.pm60_resid - leagueResid;
-        p.d_val60 = p.d_adj * DEF_W;
+        p.d_adj = p.pm60_resid - leagueResid;
+      });
+
+      // Blocked shots (position-adjust then team-adjust, same as Python model)
+      const hasBlocks = Object.keys(blocksMap).length > 0;
+      if (hasBlocks) {
+        rows.forEach(p => {
+          p.blocks60 = p.toi > 0.1 ? (blocksMap[p.id] || 0) / p.toi * 60 : 0;
+        });
+        const fMean = wMean(qual.filter(p=>p.pos==="F").map(p=>p.blocks60),
+                            qual.filter(p=>p.pos==="F").map(p=>p.toi));
+        const dMean = wMean(qual.filter(p=>p.pos==="D").map(p=>p.blocks60),
+                            qual.filter(p=>p.pos==="D").map(p=>p.toi));
+        const posMean = { F: fMean, D: dMean };
+        rows.forEach(p => { p.blocks60_pos = p.blocks60 - (posMean[p.pos] || 0); });
+        const blkTeam = {};
+        teams.forEach(t => {
+          const tq = qual.filter(p=>p.team===t);
+          blkTeam[t] = wMean(tq.map(p=>p.blocks60_pos), tq.map(p=>p.toi));
+        });
+        rows.forEach(p => {
+          p.block_val60 = (p.blocks60_pos - (blkTeam[p.team] ?? 0)) * BLOCK_W;
+        });
+      } else {
+        rows.forEach(p => { p.block_val60 = 0; });
+      }
+
+      rows.forEach(p => {
+        p.d_val60 = p.d_adj * DEF_W + p.block_val60;
         p.val60   = p.o_xG60 + p.d_val60;
       });
 
@@ -567,6 +596,39 @@
         dwar:  Math.round(p.dWAR*1000)/1000,
         oxg60: Math.round(p.o_xG60*1000)/1000,
       }));
+    }
+
+    // ── Live blocks fetch from HockeyTech API (JSONP) ────────────
+    function fetchBlocks(seasonId) {
+      return new Promise((resolve) => {
+        const cbName = '_pwhlBlk_' + Date.now();
+        const params = new URLSearchParams({
+          feed: 'statviewfeed', view: 'players',
+          season: String(seasonId),
+          key: HT_KEY, client_code: 'pwhl',
+          team: 'all', position: 'skaters',
+          sort: 'blocked', limit: '300',
+          callback: cbName,
+        });
+        const script = document.createElement('script');
+        const timer = setTimeout(() => {
+          delete window[cbName]; script.remove(); resolve({});
+        }, 8000);
+        window[cbName] = (data) => {
+          clearTimeout(timer); delete window[cbName]; script.remove();
+          try {
+            const rows = data[0].sections[0].data;
+            const blk = {};
+            rows.forEach(({row}) => {
+              blk[parseInt(row.player_id)] = parseInt(row.shots_blocked_by_player) || 0;
+            });
+            resolve(blk);
+          } catch { resolve({}); }
+        };
+        script.onerror = () => { clearTimeout(timer); delete window[cbName]; resolve({}); };
+        script.src = `https://lscluster.hockeytech.com/feed/index.php?${params}`;
+        document.head.appendChild(script);
+      });
     }
 
     // ── Main refresh ─────────────────────────────────────────────
@@ -607,6 +669,9 @@
         (async()=>{ const r=[]; for (const u of pbpUrls) { try{r.push(await fetch(u).then(x=>x.json()));}catch{r.push(null);} tick(); } return r; })(),
         (async()=>{ const r=[]; for (const u of summUrls) { try{r.push(await fetch(u).then(x=>x.json()));}catch{r.push(null);} tick(); } return r; })(),
       ]);
+
+      onProgress(90, "Fetching blocks…");
+      const blocksMap = await fetchBlocks(3);  // HockeyTech season 3 = 2025-26
 
       onProgress(92, "Computing WAR…");
 
@@ -685,7 +750,7 @@
       const avgGoalsPerTeam = nTeamGames ? totalGoals/nTeamGames : 2.25;
       const gpw = 2*avgGoalsPerTeam;
 
-      const warRows = computeWAR(players, gpw);
+      const warRows = computeWAR(players, gpw, blocksMap);
       onProgress(100, "Done");
       return { rows: warRows, gpw, gameCount: gameIds.length, ts: Date.now() };
     }
