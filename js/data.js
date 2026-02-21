@@ -66,33 +66,6 @@ const DATA = {
       color:    "#1B3A8A",
       featured: true
     },
-    {
-      id:       2,
-      title:    "Predictive ML Pipeline",
-      desc:     "End-to-end machine learning pipeline for binary classification, " +
-                "including automated feature engineering, nested cross-validation, " +
-                "and hyperparameter tuning via Optuna. Achieved 94% accuracy on the " +
-                "holdout set.",
-      tags:     ["Python", "Machine Learning", "Scikit-learn"],
-      github:   "#",
-      demo:     null,
-      report:   null,
-      color:    "#CFB53B",
-      featured: false
-    },
-    {
-      id:       3,
-      title:    "Sports Performance Dashboard",
-      desc:     "Interactive R Shiny dashboard visualizing player performance trends " +
-                "across a full season. Designed for non-technical stakeholders with " +
-                "drill-down filtering and exportable summaries.",
-      tags:     ["R", "Visualization", "Sports Analytics"],
-      github:   "#",
-      demo:     null,
-      report:   null,
-      color:    "#2B52B6",
-      featured: false
-    }
     // ➕  Add more projects here — copy a block above and edit the fields
   ],
 
