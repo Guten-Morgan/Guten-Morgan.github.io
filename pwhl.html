@@ -380,7 +380,7 @@
 
       <div class="war-chart-wrap">
         <div class="chart-header">
-          <span class="chart-title">WAR vs xG/60</span>
+          <span class="chart-title">oWAR vs dWAR</span>
           <span class="chart-hint">Dashed lines = median + 1 SD (all season players) &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
         </div>
         <canvas id="warChartCanvas"></canvas>
@@ -952,14 +952,14 @@
 
       const fRows = chartRows.filter(r => r.pos === "F");
       const dRows = chartRows.filter(r => r.pos === "D");
-      const toPoint = r => ({ x: r.war, y: r.oxg60 ?? 0, name: r.name, team: r.team });
+      const toPoint = r => ({ x: r.dwar, y: r.owar, name: r.name, team: r.team });
 
-      const allX   = chartRows.map(r => r.war);
-      const allY   = chartRows.map(r => r.oxg60 ?? 0);
+      const allX   = chartRows.map(r => r.dwar);
+      const allY   = chartRows.map(r => r.owar);
       const minX   = Math.min(...allX, -0.05) - 0.12;
       const maxX   = Math.max(...allX,  0.05) + 0.12;
-      const minY   = Math.max(0, Math.min(...allY) - 0.05);
-      const maxY   = Math.max(...allY) + 0.12;
+      const minY   = Math.min(...allY, -0.05) - 0.12;
+      const maxY   = Math.max(...allY,  0.05) + 0.12;
 
       function median(arr) {
         const s = [...arr].sort((a, b) => a - b);
@@ -972,8 +972,8 @@
       }
 
       // Thresholds: 1 std above the median, computed from full season pool
-      const baseX  = baseRows.map(r => r.war);
-      const baseY  = baseRows.map(r => r.oxg60 ?? 0);
+      const baseX  = baseRows.map(r => r.dwar);
+      const baseY  = baseRows.map(r => r.owar);
       const threshX = median(baseX) + stddev(baseX);
       const threshY = median(baseY) + stddev(baseY);
 
@@ -988,18 +988,18 @@
           ctx.font = "10px Inter, sans-serif";
           ctx.fillStyle = "rgba(140,140,140,0.75)";
           const PAD = 7;
-          // Top-left: high xG/60, below WAR threshold → High Efficiency
+          // Top-left: high oWAR, low dWAR → Offensive Role Player
           ctx.textAlign = "left";
-          ctx.fillText("High Efficiency", ca.left + PAD, ca.top + 14);
-          // Top-right: high xG/60, above WAR threshold → Elite
+          ctx.fillText("Offensive Role Player", ca.left + PAD, ca.top + 14);
+          // Top-right: high oWAR, high dWAR → Elite
           ctx.textAlign = "right";
           ctx.fillText("Elite", ca.right - PAD, ca.top + 14);
-          // Bottom-left: low xG/60, below WAR threshold → Role Player
+          // Bottom-left: low oWAR, low dWAR → Depth Player
           ctx.textAlign = "left";
-          ctx.fillText("Role Player", ca.left + PAD, ca.bottom - PAD);
-          // Bottom-right: low xG/60, above WAR threshold → Volume Player
+          ctx.fillText("Depth Player", ca.left + PAD, ca.bottom - PAD);
+          // Bottom-right: low oWAR, high dWAR → Defensive Role Player
           ctx.textAlign = "right";
-          ctx.fillText("Volume Player", ca.right - PAD, ca.bottom - PAD);
+          ctx.fillText("Defensive Role Player", ca.right - PAD, ca.bottom - PAD);
           ctx.restore();
         }
       };
@@ -1060,8 +1060,8 @@
                   const d = ctx.raw;
                   return [
                     `${d.name}  ·  ${d.team}`,
-                    `WAR: ${d.x.toFixed(3)}`,
-                    `xG/60: ${d.y.toFixed(3)}`,
+                    `dWAR: ${d.x.toFixed(3)}`,
+                    `oWAR: ${d.y.toFixed(3)}`,
                   ];
                 }
               }
@@ -1070,13 +1070,13 @@
           scales: {
             x: {
               min: minX, max: maxX,
-              title: { display: true, text: "WAR", font: { size: 11 }, color: "#999" },
+              title: { display: true, text: "dWAR", font: { size: 11 }, color: "#999" },
               grid: { color: "rgba(0,0,0,0.05)" },
               ticks: { font: { size: 11 }, color: "#888" },
             },
             y: {
               min: minY, max: maxY,
-              title: { display: true, text: "xG / 60 min", font: { size: 11 }, color: "#999" },
+              title: { display: true, text: "oWAR", font: { size: 11 }, color: "#999" },
               grid: { color: "rgba(0,0,0,0.05)" },
               ticks: { font: { size: 11 }, color: "#888" },
             }
