@@ -82,21 +82,42 @@ const DATA = {
       readTime: "8 min read",
       excerpt:  "How I approached quantifying player value in women's professional " +
                 "hockey using play-by-play data and an adapted WAR framework.",
-      tags:     ["Sports Analytics", "Statistics", "Python"],
+      tags:     ["Sports Analytics", "Statistics", "Python", "AI"],
       content: `
         <h3>Overview</h3>
         <p>
-          Wins Above Replacement (WAR) is a catch-all statistic designed to summarize
+          The goal was to identify player level Wins Above Replacement to have backward looking player specific analysis. Wins Above Replacement (WAR) is a catch-all statistic designed to summarize
           a player's total contributions to their team in a single number.
           Adapting this framework for the PWHL presented unique challenges due to
           data availability and roster construction differences from the NHL.
+
+          AI-assisted approaches were used to help parse and clean the play-by-play data, as well as to generate initial feature sets for the model. 
+          However, all modeling decisions and interpretations were made by me, ensuring that the final WAR metric is grounded in domain knowledge and statistical rigor.
         </p>
 
         <h3>Data Collection</h3>
         <p>
-          I collected play-by-play data from the 2024–25 and 2025–26 PWHL seasons,
-          parsing shot events, zone entries, face-offs, and penalty data.
+          I collected play-by-play data from the 2023-2024, 2024–25, and 2025–26 PWHL seasons,
+          parsing shot events, blocked shots, time on ice, plus/minus, and goals.
           The raw dataset contained over 50,000 events across 120 games.
+        </p>
+
+        <h3>Assumptions</h3>
+        <p>
+          Goals related directly to wins, about 5 per game. Goalies are of the 
+          same talent and caliber across teams.
+        </p>
+
+        <h3>Limitations</h3>
+        <p>
+          Only 2.5 seasons of data, so a lot of noise around individual play. 
+          Can only separate so much from team level play. As such Min and MTL 
+          players are higher on average than other teams. The only data to test 
+          against that isn't being used in the model is team level data, so W/L 
+          and point differential. Defense play is nosier since they typically 
+          do not have as high of expected goals as offensive players, separating 
+          out players into offensive and effusive play without over valuing good 
+          two way players is especially difficult.
         </p>
 
         <h3>Methodology</h3>
@@ -115,39 +136,6 @@ const DATA = {
         <p>
           Replace this placeholder with your actual findings, charts, and takeaways.
           You can paste HTML-formatted content or use a markdown-to-HTML converter.
-        </p>
-      `
-    },
-    {
-      id:       2,
-      title:    "Feature Engineering Strategies for Tabular Data",
-      date:     "January 2026",
-      readTime: "6 min read",
-      excerpt:  "A practical guide to creating meaningful features from raw tabular " +
-                "data, with examples drawn from real-world projects.",
-      tags:     ["Machine Learning", "Python", "Best Practices"],
-      content: `
-        <h3>Why Feature Engineering Still Matters</h3>
-        <p>
-          Despite the rise of deep learning approaches that learn representations
-          automatically, feature engineering remains the highest-leverage step in
-          most tabular ML projects. A thoughtfully engineered feature can outperform
-          weeks of model tuning.
-        </p>
-
-        <h3>Key Strategies</h3>
-        <ul>
-          <li><strong>Interaction terms</strong> — multiply or divide correlated features</li>
-          <li><strong>Temporal aggregations</strong> — rolling means, lags, trend slopes</li>
-          <li><strong>Target encoding</strong> — encode categoricals with leave-one-out stats</li>
-          <li><strong>Domain-specific ratios</strong> — e.g. shots-on-net / shots attempted</li>
-        </ul>
-
-        <h3>A Practical Example</h3>
-        <p>
-          Replace this section with a concrete code example or case study from one
-          of your projects. Use <code>&lt;pre&gt;&lt;code&gt;...&lt;/code&gt;&lt;/pre&gt;</code> blocks
-          for code snippets.
         </p>
       `
     }
