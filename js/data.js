@@ -131,12 +131,6 @@ const DATA = {
           <li>Regularized Adjusted Plus-Minus for on-ice impact</li>
           <li>Zone-start adjustments to account for deployment context</li>
         </ul>
-
-        <h3>Results</h3>
-        <p>
-          Replace this placeholder with your actual findings, charts, and takeaways.
-          You can paste HTML-formatted content or use a markdown-to-HTML converter.
-        </p>
       `
     }
     // ➕  Add more posts here — copy a block above and edit the fields
