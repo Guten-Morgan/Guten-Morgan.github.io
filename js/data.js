@@ -79,7 +79,6 @@ const DATA = {
       id:       1,
       title:    "Building a WAR Model for the PWHL",
       date:     "February 2026",
-      readTime: "8 min read",
       excerpt:  "How I approached quantifying player value in women's professional " +
                 "hockey using play-by-play data and an adapted WAR framework.",
       tags:     ["Sports Analytics", "Statistics", "Python", "AI"],
