@@ -415,7 +415,7 @@
         xG/60 = individual offensive expected goals per 60 min — pure shot-generation rate, independent of ice time and the defensive component, so it ranks differently from WAR.
         Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
         When multiple seasons are selected, WAR and xG/60 are averaged across seasons played.
-        <strong>2025 season is partial</strong> — defensive WAR uses Fenwick xGA throughout (goalie-agnostic). Live refresh approximates dWAR using pm60.
+        <strong>2025 season is partial</strong> — defensive WAR uses FA60 (Fenwick shots against per 60, goalie-agnostic). Live refresh mirrors the Python model: FA60 unit-variance normalised, no team-centering, defense_weight=0.79.
       </div>
     </div>
   </section>
@@ -439,7 +439,7 @@
   // ════════════════════════════════════════════════════════════════
   const REFRESH = (() => {
     const API   = "https://pwhl.hockey-statistics.com/api";
-    const KEY   = "pwhl_2025_cache_v2";
+    const KEY   = "pwhl_2025_cache_v3";
     const CACHE_TTL_MS = 6 * 60 * 60 * 1000;  // 6-hour cache
 
     const XG = {
@@ -456,7 +456,7 @@
     };
     const MIN_TOI   = 25;
     const REPL_PCT  = 25;
-    const DEF_W     = 0.36;
+    const DEF_W     = 0.79;
     const BLOCK_W   = 0.04;
     const HT_KEY    = "446521baf8c38984";
 
@@ -494,6 +494,12 @@
       if (["LD","RD","D"].includes(p)) return "D";
       return "F";
     }
+    function stddev(arr) {
+      const n = arr.length;
+      if (n < 2) return 1;
+      const m = arr.reduce((a,b)=>a+b,0)/n;
+      return Math.sqrt(arr.reduce((s,x)=>s+(x-m)**2,0)/(n-1));
+    }
 
     // ── Batch fetch with concurrency limit ───────────────────────
     async function batchFetch(urls, concurrency=6) {
@@ -510,41 +516,38 @@
     }
 
     // ── Compute WAR from aggregated player map ───────────────────
+    // Defensive proxy: FA60 (Fenwick shots against per 60), team_adjust=False.
+    // Higher FA60 = more shots allowed = worse defense → sign=-1 (negated below).
+    // Matches Python model: FA60 unit-variance normalised, DEF_W=0.79.
     function computeWAR(players, gpw, blocksMap = {}) {
       const rows = Object.values(players).filter(p => p.pos!=="G");
 
       rows.forEach(p => {
-        p.o_xG60   = p.toi > 0.1 ? (p.ixG / p.toi * 60) : 0;
-        p.pm60     = p.toi > 0.1 ? (p.pm  / p.toi * 60) : 0;
+        p.o_xG60 = p.toi > 0.1 ? (p.ixG / p.toi * 60) : 0;
+        p.fa60   = p.toi > 0.1 ? (p.fa  / p.toi * 60) : 0;
       });
 
       const qual = rows.filter(p => p.toi >= MIN_TOI);
       if (qual.length < 2) return [];
 
-      const { slope, intercept } = ols(qual.map(p=>p.o_xG60), qual.map(p=>p.pm60));
+      // Unit-variance normalisation of FA60 (matches Python FA60/FA60.std())
+      const fa60Std = stddev(qual.map(p=>p.fa60));
+      if (fa60Std > 1e-9) rows.forEach(p => { p.fa60 = p.fa60 / fa60Std; });
 
+      // OLS residual: FA60 ~ o_xG60 (removes offensive-zone-deployment bias)
+      const { slope, intercept } = ols(qual.map(p=>p.o_xG60), qual.map(p=>p.fa60));
       rows.forEach(p => {
-        p.pm60_resid = p.pm60 - (intercept + slope*p.o_xG60);
+        p.fa60_resid = p.fa60 - (intercept + slope*p.o_xG60);
       });
 
-      // Team-adjust: subtract each team's TOI-weighted mean residual
-      // so dWAR reflects performance vs teammates, not team quality.
-      const teams = [...new Set(qual.map(p=>p.team))];
-      const teamResid = {};
-      teams.forEach(t => {
-        const tq = qual.filter(p=>p.team===t);
-        teamResid[t] = wMean(tq.map(p=>p.pm60_resid), tq.map(p=>p.toi));
-      });
+      // No team-adjust (team_adjust=False preserves between-team defensive signal)
+      const leagueResid = wMean(qual.map(p=>p.fa60_resid), qual.map(p=>p.toi));
       rows.forEach(p => {
-        p.pm60_resid = p.pm60_resid - (teamResid[p.team] ?? 0);
-      });
-
-      const leagueResid = wMean(qual.map(p=>p.pm60_resid), qual.map(p=>p.toi));
-      rows.forEach(p => {
-        p.d_adj = p.pm60_resid - leagueResid;
+        p.d_adj = p.fa60_resid - leagueResid;
       });
 
       // Blocked shots (position-adjust then team-adjust, same as Python model)
+      const teams = [...new Set(qual.map(p=>p.team))];
       const hasBlocks = Object.keys(blocksMap).length > 0;
       if (hasBlocks) {
         rows.forEach(p => {
@@ -569,7 +572,8 @@
       }
 
       rows.forEach(p => {
-        p.d_val60 = p.d_adj * DEF_W + p.block_val60;
+        // sign=-1: more shots against → higher d_adj → negative defensive value
+        p.d_val60 = -p.d_adj * DEF_W + p.block_val60;
         p.val60   = p.o_xG60 + p.d_val60;
       });
 
@@ -724,6 +728,32 @@
           if (e.event==="goal") totalGoals++;
         });
 
+        // FA per defending team: count shots by attacking team → credit opposing team
+        const gameTeamFA = {};
+        pbp.forEach(e => {
+          if (e.event!=="shot") return;
+          const tid=String(e.details?.shooterTeamId||"");
+          if (!tid) return;
+          const atkAbbr=teamIdToAbbr[tid];
+          if (!atkAbbr) return;
+          const defAbbr=atkAbbr===gt.home ? gt.away : gt.home;
+          gameTeamFA[defAbbr]=(gameTeamFA[defAbbr]||0)+1;
+        });
+
+        // Sum skater TOI per team for proportional FA attribution
+        const gameTeamTOI = {};
+        ["homeTeam","visitingTeam"].forEach((side,si) => {
+          const defAbbr=si===0 ? gt.home : gt.away;
+          (summ[side]?.skaters||[]).forEach(p => {
+            const pid=pidFromUrl(p.playerImageURL||"");
+            if (!pid) return;
+            const st=p.stats||{};
+            const toi=parseTOI(st.toi||st.timeOnIce||"");
+            const team=pidTeam[pid]||defAbbr||"UNK";
+            gameTeamTOI[team]=(gameTeamTOI[team]||0)+toi;
+          });
+        });
+
         // Summaries
         ["homeTeam","visitingTeam"].forEach((side, si) => {
           const defAbbr = si===0 ? gt.home : gt.away;
@@ -736,10 +766,14 @@
               const toi=parseTOI(st.toi||st.timeOnIce||"");
               const team=pidTeam[pid]||defAbbr||"UNK";
               const key=`${pid}|${team}`;
-              if (!players[key]) players[key]={id:pid,name:p.name||"",team,pos,gp:0,toi:0,ixG:0,pm:0};
+              if (!players[key]) players[key]={id:pid,name:p.name||"",team,pos,gp:0,toi:0,ixG:0,fa:0};
               if (toi>0) { players[key].gp++; players[key].toi+=toi; }
-              players[key].ixG  += ixgMap[pid]||0;
-              players[key].pm   += st.plusMinus||0;
+              players[key].ixG += ixgMap[pid]||0;
+              // FA: distribute team FA proportionally by player TOI share
+              if (pos!=="G" && toi>0) {
+                const ttoi=gameTeamTOI[team]||0;
+                players[key].fa += ttoi>0 ? (gameTeamFA[team]||0)*(toi/ttoi) : 0;
+              }
             });
           });
           nTeamGames++;
