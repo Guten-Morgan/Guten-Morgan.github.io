@@ -415,7 +415,7 @@
         xG/60 = individual offensive expected goals per 60 min — pure shot-generation rate, independent of ice time and the defensive component, so it ranks differently from WAR.
         Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
         When multiple seasons are selected, WAR and xG/60 are averaged across seasons played.
-        <strong>2025 season is partial</strong> — defensive WAR uses FA60 (Fenwick shots against per 60, goalie-agnostic). Live refresh mirrors the Python model: FA60 unit-variance normalised, no team-centering, defense_weight=0.79.
+        <strong>2025 season is partial</strong> — defensive WAR uses FA60 (Fenwick shots against per 60, goalie-agnostic). Live refresh mirrors the Python model: FA60 unit-variance normalised, OLS removes o_xG60 + position (is_D) deployment bias, no team-centering, defense_weight=1.40.
       </div>
     </div>
   </section>
@@ -456,7 +456,7 @@
     };
     const MIN_TOI   = 25;
     const REPL_PCT  = 25;
-    const DEF_W     = 0.79;
+    const DEF_W     = 1.40;
     const BLOCK_W   = 0.04;
     const HT_KEY    = "446521baf8c38984";
 
@@ -479,6 +479,28 @@
       xs.forEach((x,i)=>{ num+=(x-mx)*(ys[i]-my); den+=(x-mx)**2; });
       const slope = den ? num/den : 0;
       return { slope, intercept: my - slope*mx };
+    }
+    // 2-predictor OLS: y = α + β1*x1 + β2*x2, solved via Cramer's rule
+    function ols2(x1s, x2s, ys) {
+      const n=x1s.length;
+      let S1=0,S2=0,Sy=0,S11=0,S22=0,S12=0,S1y=0,S2y=0;
+      for (let i=0;i<n;i++){
+        S1+=x1s[i]; S2+=x2s[i]; Sy+=ys[i];
+        S11+=x1s[i]**2; S22+=x2s[i]**2; S12+=x1s[i]*x2s[i];
+        S1y+=x1s[i]*ys[i]; S2y+=x2s[i]*ys[i];
+      }
+      const A=[[n,S1,S2],[S1,S11,S12],[S2,S12,S22]];
+      const b=[Sy,S1y,S2y];
+      const det3=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+                   -m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+                   +m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+      const D=det3(A);
+      if(Math.abs(D)<1e-12) return {intercept:0,slopeX1:0,slopeX2:0};
+      return {
+        intercept: det3([[b[0],A[0][1],A[0][2]],[b[1],A[1][1],A[1][2]],[b[2],A[2][1],A[2][2]]])/D,
+        slopeX1:   det3([[A[0][0],b[0],A[0][2]],[A[1][0],b[1],A[1][2]],[A[2][0],b[2],A[2][2]]])/D,
+        slopeX2:   det3([[A[0][0],A[0][1],b[0]],[A[1][0],A[1][1],b[1]],[A[2][0],A[2][1],b[2]]])/D,
+      };
     }
     function pidFromUrl(url) {
       try { return parseInt(url.split("/").pop()); } catch { return 0; }
@@ -518,13 +540,14 @@
     // ── Compute WAR from aggregated player map ───────────────────
     // Defensive proxy: FA60 (Fenwick shots against per 60), team_adjust=False.
     // Higher FA60 = more shots allowed = worse defense → sign=-1 (negated below).
-    // Matches Python model: FA60 unit-variance normalised, DEF_W=0.79.
+    // Matches Python model: FA60 unit-variance normalised, OLS includes is_D dummy, DEF_W=1.40.
     function computeWAR(players, gpw, blocksMap = {}) {
       const rows = Object.values(players).filter(p => p.pos!=="G");
 
       rows.forEach(p => {
         p.o_xG60 = p.toi > 0.1 ? (p.ixG / p.toi * 60) : 0;
         p.fa60   = p.toi > 0.1 ? (p.fa  / p.toi * 60) : 0;
+        p.is_D   = p.pos === "D" ? 1 : 0;
       });
 
       const qual = rows.filter(p => p.toi >= MIN_TOI);
@@ -534,10 +557,11 @@
       const fa60Std = stddev(qual.map(p=>p.fa60));
       if (fa60Std > 1e-9) rows.forEach(p => { p.fa60 = p.fa60 / fa60Std; });
 
-      // OLS residual: FA60 ~ o_xG60 (removes offensive-zone-deployment bias)
-      const { slope, intercept } = ols(qual.map(p=>p.o_xG60), qual.map(p=>p.fa60));
+      // OLS residual: FA60 ~ o_xG60 + is_D (removes offensive-zone + position bias)
+      const { intercept, slopeX1, slopeX2 } = ols2(
+        qual.map(p=>p.o_xG60), qual.map(p=>p.is_D), qual.map(p=>p.fa60));
       rows.forEach(p => {
-        p.fa60_resid = p.fa60 - (intercept + slope*p.o_xG60);
+        p.fa60_resid = p.fa60 - (intercept + slopeX1*p.o_xG60 + slopeX2*p.is_D);
       });
 
       // No team-adjust (team_adjust=False preserves between-team defensive signal)
@@ -572,7 +596,7 @@
       }
 
       rows.forEach(p => {
-        // sign=-1: more shots against → higher d_adj → negative defensive value
+        // sign=-1: more shots against → higher d_adj → negative defensive value; DEF_W=1.40
         p.d_val60 = -p.d_adj * DEF_W + p.block_val60;
         p.val60   = p.o_xG60 + p.d_val60;
       });
