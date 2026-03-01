@@ -456,7 +456,7 @@
     };
     const MIN_TOI   = 25;
     const REPL_PCT  = 25;
-    const DEF_W     = 1.40;
+    const DEF_W     = 0.10;
     const BLOCK_W   = 0.04;
     const HT_KEY    = "446521baf8c38984";
 
@@ -538,9 +538,9 @@
     }
 
     // ── Compute WAR from aggregated player map ───────────────────
-    // Defensive proxy: FA60 (Fenwick shots against per 60), team_adjust=False.
-    // Higher FA60 = more shots allowed = worse defense → sign=-1 (negated below).
-    // Matches Python model: FA60 unit-variance normalised, OLS includes is_D dummy, DEF_W=1.40.
+    // Defensive proxy: xGA60 (xG against per 60, team-attributed by TOI share), team_adjust=False.
+    // Higher xGA60 = more xG allowed = worse defense → sign=-1 (negated below).
+    // Matches Python model: xGA60 unit-variance normalised, OLS includes is_D dummy, DEF_W=0.10.
     function computeWAR(players, gpw, blocksMap = {}) {
       const rows = Object.values(players).filter(p => p.pos!=="G");
 
@@ -596,7 +596,7 @@
       }
 
       rows.forEach(p => {
-        // sign=-1: more shots against → higher d_adj → negative defensive value; DEF_W=1.40
+        // sign=-1: more xG against → higher d_adj → negative defensive value; DEF_W=0.10
         p.d_val60 = -p.d_adj * DEF_W + p.block_val60;
         p.val60   = p.o_xG60 + p.d_val60;
       });
