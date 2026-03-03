@@ -415,7 +415,7 @@
         xG/60 = individual offensive expected goals per 60 min — pure shot-generation rate, independent of ice time and the defensive component, so it ranks differently from WAR.
         Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
         When multiple seasons are selected, WAR and xG/60 are averaged across seasons played.
-        <strong>2025 season is partial</strong> — defensive WAR uses FA60 (Fenwick shots against per 60, goalie-agnostic). Live refresh mirrors the Python model: FA60 unit-variance normalised, OLS removes o_xG60 + position (is_D) deployment bias, no team-centering, defense_weight=1.40.
+        <strong>2025 season is partial</strong> — defensive WAR uses xGA60 (xG against per 60, goalie-agnostic). Live refresh mirrors the Python model: xGA60 unit-variance normalised, OLS removes o_xG60 + position (is_D) deployment bias, no team-centering, defense_weight=-0.10.
       </div>
     </div>
   </section>
@@ -456,7 +456,7 @@
     };
     const MIN_TOI   = 25;
     const REPL_PCT  = 25;
-    const DEF_W     = 0.10;
+    const DEF_W     = -0.10;
     const BLOCK_W   = 0.04;
     const HT_KEY    = "446521baf8c38984";
 
@@ -539,8 +539,8 @@
 
     // ── Compute WAR from aggregated player map ───────────────────
     // Defensive proxy: xGA60 (xG against per 60, team-attributed by TOI share), team_adjust=False.
-    // Higher xGA60 = more xG allowed = worse defense → sign=-1 (negated below).
-    // Matches Python model: xGA60 unit-variance normalised, OLS includes is_D dummy, DEF_W=0.10.
+    // Higher xGA60 = more xG allowed = worse defense → DEF_W is negative.
+    // Matches Python model: xGA60 unit-variance normalised, OLS includes is_D dummy, DEF_W=-0.10.
     function computeWAR(players, gpw, blocksMap = {}) {
       const rows = Object.values(players).filter(p => p.pos!=="G");
 
@@ -596,8 +596,8 @@
       }
 
       rows.forEach(p => {
-        // sign=-1: more xG against → higher d_adj → negative defensive value; DEF_W=0.10
-        p.d_val60 = -p.d_adj * DEF_W + p.block_val60;
+        // DEF_W=-0.10: negative weight encodes direction (more xGA → lower d_val60)
+        p.d_val60 = p.d_adj * DEF_W + p.block_val60;
         p.val60   = p.o_xG60 + p.d_val60;
       });
 
