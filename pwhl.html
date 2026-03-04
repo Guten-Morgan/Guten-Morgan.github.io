@@ -1001,10 +1001,12 @@
 
       const allX   = chartRows.map(r => r.gp > 0 ? r.dwar / r.gp : 0);
       const allY   = chartRows.map(r => r.gp > 0 ? r.owar / r.gp : 0);
-      const minX   = Math.min(...allX, -0.05) - 0.12;
-      const maxX   = Math.max(...allX,  0.05) + 0.12;
-      const minY   = Math.min(...allY, -0.05) - 0.12;
-      const maxY   = Math.max(...allY,  0.05) + 0.12;
+      const padX   = Math.max((Math.max(...allX) - Math.min(...allX)) * 0.15, 0.003);
+      const padY   = Math.max((Math.max(...allY) - Math.min(...allY)) * 0.15, 0.003);
+      const minX   = Math.min(...allX) - padX;
+      const maxX   = Math.max(...allX) + padX;
+      const minY   = Math.min(...allY) - padY;
+      const maxY   = Math.max(...allY) + padY;
 
       function median(arr) {
         const s = [...arr].sort((a, b) => a - b);
