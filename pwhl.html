@@ -572,19 +572,23 @@
           const xT = x.getPixelForValue(threshX);
           const yT = y.getPixelForValue(threshY);
           ctx.save();
+          // Dashed threshold lines
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = "rgba(150,150,150,0.5)";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(xT, ca.top);    ctx.lineTo(xT, ca.bottom); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(ca.left, yT);   ctx.lineTo(ca.right, yT);  ctx.stroke();
+          ctx.setLineDash([]);
+          // Quadrant labels
           ctx.font = "10px Inter, sans-serif";
           ctx.fillStyle = "rgba(140,140,140,0.75)";
           const PAD = 7;
-          // Top-left: high oWAR, low dWAR → Offensive Role Player
           ctx.textAlign = "left";
           ctx.fillText("Offensive Role Player", ca.left + PAD, ca.top + 14);
-          // Top-right: high oWAR, high dWAR → Elite
           ctx.textAlign = "right";
           ctx.fillText("Elite", ca.right - PAD, ca.top + 14);
-          // Bottom-left: low oWAR, low dWAR → Depth Player
           ctx.textAlign = "left";
           ctx.fillText("Depth Player", ca.left + PAD, ca.bottom - PAD);
-          // Bottom-right: low oWAR, high dWAR → Defensive Role Player
           ctx.textAlign = "right";
           ctx.fillText("Defensive Role Player", ca.right - PAD, ca.bottom - PAD);
           ctx.restore();
@@ -610,20 +614,6 @@
               borderColor:     "rgba(170,145,30,0.9)",
               pointRadius: 5, pointHoverRadius: 7,
             },
-            // WAR threshold (median + 1 SD) vertical reference line
-            {
-              type: "line", label: "_v", parsing: false,
-              data: [{ x: threshX, y: minY }, { x: threshX, y: maxY }],
-              borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
-              borderDash: [5, 4], pointRadius: 0, fill: false,
-            },
-            // oWAR/GP threshold (median + 1 SD) horizontal reference line
-            {
-              type: "line", label: "_h", parsing: false,
-              data: [{ x: minX, y: threshY }, { x: maxX, y: threshY }],
-              borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
-              borderDash: [5, 4], pointRadius: 0, fill: false,
-            },
           ]
         },
         options: {
@@ -634,7 +624,6 @@
             legend: {
               position: "top",
               labels: {
-                filter: item => !item.text.startsWith("_"),
                 boxWidth: 10, padding: 14,
                 font: { size: 11, family: "Inter, sans-serif" },
                 color: "#555",
