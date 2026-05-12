@@ -322,7 +322,7 @@
       <div class="war-chart-wrap">
         <div class="chart-header">
           <span class="chart-title">oWAR/GP vs dWAR/GP</span>
-          <span class="chart-hint">Dashed lines = median + 1 SD (all season players) &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (2023, 2024)</span>
+          <span class="chart-hint">Dashed lines = median + 1 SD (all season players) &nbsp;·&nbsp; chart: min 100 TOI and 12 GP</span>
         </div>
         <canvas id="warChartCanvas"></canvas>
       </div>
@@ -526,16 +526,14 @@
       if (warChart) { warChart.destroy(); warChart = null; }
       if (!rows.length) return;
 
-      // 2025-26 data includes all players ≥50 min; chart keeps same floor
-      // Full seasons (2023, 2024) data ≥50 min → chart uses 100 min
-      const only2025 = selectedSeasons.size === 1 && selectedSeasons.has("2025");
-      const chartMinToi = only2025 ? 50 : 100;
-      const chartRows = rows.filter(r => r.toi >= chartMinToi);
+      const chartMinToi = 100;
+      const chartMinGp  = 12;
+      const chartRows = rows.filter(r => r.toi >= chartMinToi && r.gp >= chartMinGp);
       if (!chartRows.length) return;
 
-      // Baseline pool: all season players (ignores team/pos filter) at same TOI floor
+      // Baseline pool: all season players (ignores team/pos filter) at same floor
       // → thresholds stay fixed when drilling into a single team
-      const baseRows = (allRows || chartRows).filter(r => r.toi >= chartMinToi);
+      const baseRows = (allRows || chartRows).filter(r => r.toi >= chartMinToi && r.gp >= chartMinGp);
 
       const fRows = chartRows.filter(r => r.pos === "F");
       const dRows = chartRows.filter(r => r.pos === "D");
@@ -614,14 +612,14 @@
             },
             // WAR threshold (median + 1 SD) vertical reference line
             {
-              type: "line", label: "_v",
+              type: "line", label: "_v", parsing: false,
               data: [{ x: threshX, y: minY }, { x: threshX, y: maxY }],
               borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
               borderDash: [5, 4], pointRadius: 0, fill: false,
             },
             // oWAR/GP threshold (median + 1 SD) horizontal reference line
             {
-              type: "line", label: "_h",
+              type: "line", label: "_h", parsing: false,
               data: [{ x: minX, y: threshY }, { x: maxX, y: threshY }],
               borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
               borderDash: [5, 4], pointRadius: 0, fill: false,
