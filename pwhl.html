@@ -236,6 +236,41 @@
     }
     .method-card strong { color: var(--text); }
 
+    /* ── Refresh bar ─────────────────────────────────────── */
+    .refresh-bar {
+      background: var(--bg-tinted);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 0;
+      font-size: .78rem; color: var(--text-3);
+    }
+    .refresh-inner {
+      display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    }
+    .refresh-status { flex: 1; }
+    .refresh-status strong { color: var(--text-2); }
+    .refresh-btn {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .3rem .85rem; border-radius: 100px;
+      font-size: .75rem; font-weight: 600;
+      background: var(--white); border: 1.5px solid var(--border);
+      color: var(--blue); cursor: pointer;
+      transition: all var(--t);
+    }
+    .refresh-btn:hover:not(:disabled) { background: var(--blue); color: var(--white); border-color: var(--blue); }
+    .refresh-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .refresh-btn svg { width: 12px; height: 12px; }
+    .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .refresh-progress {
+      height: 2px; background: var(--border);
+      position: relative; overflow: hidden; border-radius: 1px;
+    }
+    .refresh-progress-bar {
+      height: 100%; background: var(--gold);
+      border-radius: 1px; transition: width .3s ease;
+      width: 0%;
+    }
 
     @media (max-width: 640px) {
       td.td-owar, td.td-dwar { display: none; }
@@ -311,6 +346,27 @@
     </div>
   </div>
 
+  <!-- ===== REFRESH BAR ===== -->
+  <div class="refresh-bar" id="refreshBar">
+    <div class="container">
+      <div class="refresh-inner">
+        <span class="refresh-status" id="refreshStatus">
+          <strong>2025 data:</strong> loading…
+        </span>
+        <button class="refresh-btn" id="refreshBtn" disabled>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5c1.8 0 3.4.87 4.4 2.2"/>
+            <path d="M13.5 2.5v2.7h-2.7"/>
+          </svg>
+          Refresh 2025
+        </button>
+      </div>
+      <div class="refresh-progress" id="refreshProgress" style="display:none; margin-top:5px;">
+        <div class="refresh-progress-bar" id="refreshProgressBar"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== TABLE ===== -->
   <section class="war-section">
     <div class="container">
@@ -322,7 +378,7 @@
       <div class="war-chart-wrap">
         <div class="chart-header">
           <span class="chart-title">oWAR/GP vs dWAR/GP</span>
-          <span class="chart-hint">Dashed lines = median + 1 SD (all season players) &nbsp;·&nbsp; chart: min 100 TOI and 12 GP</span>
+          <span class="chart-hint">Dashed lines = median + 1 SD (all season players) &nbsp;·&nbsp; min 50 TOI (2025) / 100 TOI (full seasons)</span>
         </div>
         <canvas id="warChartCanvas"></canvas>
       </div>
@@ -347,12 +403,13 @@
 
       <div class="method-card">
         <strong>Method:</strong>
-        Offensive value = individual xG per 60 min (shot-coordinate logistic regression, EV + PP + SH).
-        Defensive value = EV xGA60 (xG against per 60, even-strength, goalie-agnostic), OLS-orthogonalized vs individual offense (o_xG60) and position (is_D) to remove deployment bias, weighted at −0.10 (higher xGA60 = worse defense).
+        Offensive value = individual xG per 60 min (EV + PP + SH).
+        Defensive value = residual plus/minus per 60 min (OLS-orthogonalized vs individual offense, then team-adjusted to remove linemate quality effects), weighted at 0.36.
         WAR = oWAR + dWAR (signed — good defense adds value, poor defense subtracts).
         Replacement level = 25th percentile of each component.
-        Goals-per-win: 4.57 (2023), 5.05 (2024), 4.67 (2025, complete 120-game season).
+        Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
         When multiple seasons are selected, WAR is averaged across seasons played.
+        <strong>2025 season is partial</strong> — defensive WAR uses xGA60 (xG against per 60, goalie-agnostic). Live refresh mirrors the Python model: xGA60 unit-variance normalised, OLS removes o_xG60 + position (is_D) deployment bias, no team-centering, defense_weight=-0.10.
       </div>
     </div>
   </section>
@@ -368,6 +425,406 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="js/pwhl-data.js"></script>
+  <script>
+  // ════════════════════════════════════════════════════════════════
+  //  PWHL 2025 Live Refresh Engine
+  //  Fetches directly from pwhl.hockey-statistics.com (public API)
+  //  and re-computes the WAR model entirely in the browser.
+  // ════════════════════════════════════════════════════════════════
+  const REFRESH = (() => {
+    const API   = "https://pwhl.hockey-statistics.com/api";
+    const KEY   = "pwhl_2025_cache_v3";
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000;  // 6-hour cache
+
+    const XG = {
+      "Non quality on net": 0.051034,
+      "Quality on net":     0.094262,
+      "Quality goal":       0.159976,
+      "Non quality goal":   0.191898,
+    };
+    const TEAM_MAP = {
+      "Boston Fleet":"BOS","Minnesota Frost":"MIN",
+      "Montr\u00e9al Victoire":"MTL","New York Sirens":"NY",
+      "Ottawa Charge":"OTT","Toronto Sceptres":"TOR",
+      "Seattle Torrent":"SEA","Vancouver Goldeneyes":"VAN",
+    };
+    const MIN_TOI   = 25;
+    const REPL_PCT  = 25;
+    const DEF_W     = -0.10;
+    const BLOCK_W   = 0.04;
+    const HT_KEY    = "446521baf8c38984";
+
+    // ── Maths helpers ────────────────────────────────────────────
+    function pctile(arr, p) {
+      const s = [...arr].sort((a,b)=>a-b);
+      const idx = (p/100)*(s.length-1);
+      const lo=Math.floor(idx), hi=Math.ceil(idx);
+      return s[lo] + (s[hi]-s[lo])*(idx-lo);
+    }
+    function wMean(vals, wts) {
+      let sw=0, sv=0;
+      vals.forEach((v,i)=>{ sw+=wts[i]; sv+=v*wts[i]; });
+      return sw ? sv/sw : 0;
+    }
+    function ols(xs, ys) {
+      const n=xs.length;
+      const mx=xs.reduce((a,b)=>a+b)/n, my=ys.reduce((a,b)=>a+b)/n;
+      let num=0, den=0;
+      xs.forEach((x,i)=>{ num+=(x-mx)*(ys[i]-my); den+=(x-mx)**2; });
+      const slope = den ? num/den : 0;
+      return { slope, intercept: my - slope*mx };
+    }
+    // 2-predictor OLS: y = α + β1*x1 + β2*x2, solved via Cramer's rule
+    function ols2(x1s, x2s, ys) {
+      const n=x1s.length;
+      let S1=0,S2=0,Sy=0,S11=0,S22=0,S12=0,S1y=0,S2y=0;
+      for (let i=0;i<n;i++){
+        S1+=x1s[i]; S2+=x2s[i]; Sy+=ys[i];
+        S11+=x1s[i]**2; S22+=x2s[i]**2; S12+=x1s[i]*x2s[i];
+        S1y+=x1s[i]*ys[i]; S2y+=x2s[i]*ys[i];
+      }
+      const A=[[n,S1,S2],[S1,S11,S12],[S2,S12,S22]];
+      const b=[Sy,S1y,S2y];
+      const det3=m=>m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+                   -m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+                   +m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+      const D=det3(A);
+      if(Math.abs(D)<1e-12) return {intercept:0,slopeX1:0,slopeX2:0};
+      return {
+        intercept: det3([[b[0],A[0][1],A[0][2]],[b[1],A[1][1],A[1][2]],[b[2],A[2][1],A[2][2]]])/D,
+        slopeX1:   det3([[A[0][0],b[0],A[0][2]],[A[1][0],b[1],A[1][2]],[A[2][0],b[2],A[2][2]]])/D,
+        slopeX2:   det3([[A[0][0],A[0][1],b[0]],[A[1][0],A[1][1],b[1]],[A[2][0],A[2][1],b[2]]])/D,
+      };
+    }
+    function pidFromUrl(url) {
+      try { return parseInt(url.split("/").pop()); } catch { return 0; }
+    }
+    function parseTOI(s) {
+      if (!s) return 0;
+      const [m,sec] = s.split(":");
+      return parseInt(m)+parseInt(sec)/60;
+    }
+    function posGroup(p) {
+      p = (p||"").toUpperCase();
+      if (p==="G") return "G";
+      if (["LD","RD","D"].includes(p)) return "D";
+      return "F";
+    }
+    function stddev(arr) {
+      const n = arr.length;
+      if (n < 2) return 1;
+      const m = arr.reduce((a,b)=>a+b,0)/n;
+      return Math.sqrt(arr.reduce((s,x)=>s+(x-m)**2,0)/(n-1));
+    }
+
+    // ── Batch fetch with concurrency limit ───────────────────────
+    async function batchFetch(urls, concurrency=6) {
+      const results=[], queue=[...urls];
+      async function worker() {
+        while (queue.length) {
+          const url=queue.shift();
+          try { results.push(await fetch(url).then(r=>r.json())); }
+          catch { results.push(null); }
+        }
+      }
+      await Promise.all(Array.from({length:concurrency}, worker));
+      return results;
+    }
+
+    // ── Compute WAR from aggregated player map ───────────────────
+    // Defensive proxy: xGA60 (xG against per 60, team-attributed by TOI share), team_adjust=False.
+    // Higher xGA60 = more xG allowed = worse defense → DEF_W is negative.
+    // Matches Python model: xGA60 unit-variance normalised, OLS includes is_D dummy, DEF_W=-0.10.
+    function computeWAR(players, gpw, blocksMap = {}) {
+      const rows = Object.values(players).filter(p => p.pos!=="G");
+
+      rows.forEach(p => {
+        p.o_xG60 = p.toi > 0.1 ? (p.ixG / p.toi * 60) : 0;
+        p.fa60   = p.toi > 0.1 ? (p.fa  / p.toi * 60) : 0;
+        p.is_D   = p.pos === "D" ? 1 : 0;
+      });
+
+      const qual = rows.filter(p => p.toi >= MIN_TOI);
+      if (qual.length < 2) return [];
+
+      // Unit-variance normalisation of FA60 (matches Python FA60/FA60.std())
+      const fa60Std = stddev(qual.map(p=>p.fa60));
+      if (fa60Std > 1e-9) rows.forEach(p => { p.fa60 = p.fa60 / fa60Std; });
+
+      // OLS residual: FA60 ~ o_xG60 + is_D (removes offensive-zone + position bias)
+      const { intercept, slopeX1, slopeX2 } = ols2(
+        qual.map(p=>p.o_xG60), qual.map(p=>p.is_D), qual.map(p=>p.fa60));
+      rows.forEach(p => {
+        p.fa60_resid = p.fa60 - (intercept + slopeX1*p.o_xG60 + slopeX2*p.is_D);
+      });
+
+      // No team-adjust (team_adjust=False preserves between-team defensive signal)
+      const leagueResid = wMean(qual.map(p=>p.fa60_resid), qual.map(p=>p.toi));
+      rows.forEach(p => {
+        p.d_adj = p.fa60_resid - leagueResid;
+      });
+
+      // Blocked shots (position-adjust then team-adjust, same as Python model)
+      const teams = [...new Set(qual.map(p=>p.team))];
+      const hasBlocks = Object.keys(blocksMap).length > 0;
+      if (hasBlocks) {
+        rows.forEach(p => {
+          p.blocks60 = p.toi > 0.1 ? (blocksMap[p.id] || 0) / p.toi * 60 : 0;
+        });
+        const fMean = wMean(qual.filter(p=>p.pos==="F").map(p=>p.blocks60),
+                            qual.filter(p=>p.pos==="F").map(p=>p.toi));
+        const dMean = wMean(qual.filter(p=>p.pos==="D").map(p=>p.blocks60),
+                            qual.filter(p=>p.pos==="D").map(p=>p.toi));
+        const posMean = { F: fMean, D: dMean };
+        rows.forEach(p => { p.blocks60_pos = p.blocks60 - (posMean[p.pos] || 0); });
+        const blkTeam = {};
+        teams.forEach(t => {
+          const tq = qual.filter(p=>p.team===t);
+          blkTeam[t] = wMean(tq.map(p=>p.blocks60_pos), tq.map(p=>p.toi));
+        });
+        rows.forEach(p => {
+          p.block_val60 = (p.blocks60_pos - (blkTeam[p.team] ?? 0)) * BLOCK_W;
+        });
+      } else {
+        rows.forEach(p => { p.block_val60 = 0; });
+      }
+
+      rows.forEach(p => {
+        // DEF_W=-0.10: negative weight encodes direction (more xGA → lower d_val60)
+        p.d_val60 = p.d_adj * DEF_W + p.block_val60;
+        p.val60   = p.o_xG60 + p.d_val60;
+      });
+
+      const o_repl = pctile(qual.map(p=>p.o_xG60),  REPL_PCT);
+      const d_repl = pctile(qual.map(p=>p.d_val60), REPL_PCT);
+
+      rows.forEach(p => {
+        p.oGAR = (p.o_xG60  - o_repl) * p.toi / 60;
+        p.dGAR = (p.d_val60 - d_repl) * p.toi / 60;
+        p.oWAR = p.oGAR / gpw;
+        p.dWAR = p.dGAR / gpw;
+        p.WAR  = p.oWAR + p.dWAR;
+      });
+
+      return rows.map(p => ({
+        id:    p.id,
+        name:  p.name,
+        team:  p.team,
+        pos:   p.pos,
+        gp:    p.gp,
+        toi:   Math.round(p.toi*10)/10,
+        war:   Math.round(p.WAR*1000)/1000,
+        owar:  Math.round(p.oWAR*1000)/1000,
+        dwar:  Math.round(p.dWAR*1000)/1000,
+        oxg60: Math.round(p.o_xG60*1000)/1000,
+      }));
+    }
+
+    // ── Live blocks fetch from HockeyTech API (JSONP) ────────────
+    function fetchBlocks(seasonId) {
+      return new Promise((resolve) => {
+        const cbName = '_pwhlBlk_' + Date.now();
+        const params = new URLSearchParams({
+          feed: 'statviewfeed', view: 'players',
+          season: String(seasonId),
+          key: HT_KEY, client_code: 'pwhl',
+          team: 'all', position: 'skaters',
+          sort: 'blocked', limit: '300',
+          callback: cbName,
+        });
+        const script = document.createElement('script');
+        const timer = setTimeout(() => {
+          delete window[cbName]; script.remove(); resolve({});
+        }, 8000);
+        window[cbName] = (data) => {
+          clearTimeout(timer); delete window[cbName]; script.remove();
+          try {
+            const rows = data[0].sections[0].data;
+            const blk = {};
+            rows.forEach(({row}) => {
+              blk[parseInt(row.player_id)] = parseInt(row.shots_blocked_by_player) || 0;
+            });
+            resolve(blk);
+          } catch { resolve({}); }
+        };
+        script.onerror = () => { clearTimeout(timer); delete window[cbName]; resolve({}); };
+        script.src = `https://lscluster.hockeytech.com/feed/index.php?${params}`;
+        document.head.appendChild(script);
+      });
+    }
+
+    // ── Main refresh ─────────────────────────────────────────────
+    async function run(onProgress) {
+      onProgress(0, "Fetching schedule…");
+
+      const schedResp = await fetch(`${API}/schedule`).then(r=>r.json());
+      const games2025 = schedResp.games.filter(
+        g => g.season_year==="2025/2026" && g.status.startsWith("Final")
+      );
+      const gameIds = games2025.map(g=>parseInt(g.game_id));
+
+      // Build team abbr map from schedule
+      const teamMap = {};
+      schedResp.games.forEach(g=>{
+        teamMap[g.home_team] = TEAM_MAP[g.home_team] || g.home_team;
+        teamMap[g.away_team] = TEAM_MAP[g.away_team] || g.away_team;
+      });
+      const gameTeams={};
+      schedResp.games.forEach(g=>{
+        gameTeams[parseInt(g.game_id)] = {
+          home: teamMap[g.home_team], away: teamMap[g.away_team]
+        };
+      });
+
+      const total = gameIds.length;
+      onProgress(5, `Fetching ${total} games…`);
+
+      // Fetch PBP + Summary in parallel (split into two batches)
+      const pbpUrls  = gameIds.map(id=>`${API}/game/playbyplay/${id}`);
+      const summUrls = gameIds.map(id=>`${API}/game/summary/${id}`);
+
+      let done=0;
+      const tick = () => { done++; onProgress(5 + Math.round(done/(total*2)*85), null); };
+
+      // fetch both sets concurrently but track progress
+      const [pbpResults, summResults] = await Promise.all([
+        (async()=>{ const r=[]; for (const u of pbpUrls) { try{r.push(await fetch(u).then(x=>x.json()));}catch{r.push(null);} tick(); } return r; })(),
+        (async()=>{ const r=[]; for (const u of summUrls) { try{r.push(await fetch(u).then(x=>x.json()));}catch{r.push(null);} tick(); } return r; })(),
+      ]);
+
+      onProgress(90, "Fetching blocks…");
+      const blocksMap = await fetchBlocks(3);  // HockeyTech season 3 = 2025-26
+
+      onProgress(92, "Computing WAR…");
+
+      // Aggregate player data
+      const players={};
+      const teamIdToAbbr={};
+      let totalGoals=0, nTeamGames=0;
+
+      gameIds.forEach((gid, gi) => {
+        const pbp  = pbpResults[gi];
+        const summ = summResults[gi];
+        if (!pbp || !summ) return;
+
+        const gt = gameTeams[gid] || {};
+
+        // Collect team_id → abbr from goal events
+        pbp.forEach(e => {
+          if (e.event==="goal") {
+            const t=e.details?.team;
+            if (t?.id && t?.abbreviation) teamIdToAbbr[String(t.id)]=t.abbreviation;
+          }
+        });
+
+        // ixG from shot events
+        const ixgMap={};
+        pbp.forEach(e => {
+          if (e.event!=="shot") return;
+          const pid=e.details?.shooter?.id;
+          const xg=XG[e.details?.shotQuality] || 0;
+          if (pid) ixgMap[pid]=(ixgMap[pid]||0)+xg;
+        });
+
+        // pid → team from shot events
+        const pidTeam={};
+        pbp.forEach(e => {
+          if (e.event==="shot") {
+            const pid=e.details?.shooter?.id;
+            const tid=String(e.details?.shooterTeamId||"");
+            if (pid && teamIdToAbbr[tid]) pidTeam[pid]=teamIdToAbbr[tid];
+          }
+          if (e.event==="goal") {
+            const pid=e.details?.scoredBy?.id;
+            const tid=String(e.details?.team?.id||"");
+            if (pid && teamIdToAbbr[tid]) pidTeam[pid]=teamIdToAbbr[tid];
+          }
+        });
+
+        // Goals and goal count
+        pbp.forEach(e => {
+          if (e.event==="goal") totalGoals++;
+        });
+
+        // FA per defending team: count shots by attacking team → credit opposing team
+        const gameTeamFA = {};
+        pbp.forEach(e => {
+          if (e.event!=="shot") return;
+          const tid=String(e.details?.shooterTeamId||"");
+          if (!tid) return;
+          const atkAbbr=teamIdToAbbr[tid];
+          if (!atkAbbr) return;
+          const defAbbr=atkAbbr===gt.home ? gt.away : gt.home;
+          gameTeamFA[defAbbr]=(gameTeamFA[defAbbr]||0)+1;
+        });
+
+        // Sum skater TOI per team for proportional FA attribution
+        const gameTeamTOI = {};
+        ["homeTeam","visitingTeam"].forEach((side,si) => {
+          const defAbbr=si===0 ? gt.home : gt.away;
+          (summ[side]?.skaters||[]).forEach(p => {
+            const pid=pidFromUrl(p.playerImageURL||"");
+            if (!pid) return;
+            const st=p.stats||{};
+            const toi=parseTOI(st.toi||st.timeOnIce||"");
+            const team=pidTeam[pid]||defAbbr||"UNK";
+            gameTeamTOI[team]=(gameTeamTOI[team]||0)+toi;
+          });
+        });
+
+        // Summaries
+        ["homeTeam","visitingTeam"].forEach((side, si) => {
+          const defAbbr = si===0 ? gt.home : gt.away;
+          ["skaters","goalies"].forEach(pk => {
+            (summ[side]?.[pk]||[]).forEach(p => {
+              const pid=pidFromUrl(p.playerImageURL||"");
+              if (!pid) return;
+              const pos=posGroup(p.position);
+              const st=p.stats||{};
+              const toi=parseTOI(st.toi||st.timeOnIce||"");
+              const team=pidTeam[pid]||defAbbr||"UNK";
+              const key=`${pid}|${team}`;
+              if (!players[key]) players[key]={id:pid,name:p.name||"",team,pos,gp:0,toi:0,ixG:0,fa:0};
+              if (toi>0) { players[key].gp++; players[key].toi+=toi; }
+              players[key].ixG += ixgMap[pid]||0;
+              // FA: distribute team FA proportionally by player TOI share
+              if (pos!=="G" && toi>0) {
+                const ttoi=gameTeamTOI[team]||0;
+                players[key].fa += ttoi>0 ? (gameTeamFA[team]||0)*(toi/ttoi) : 0;
+              }
+            });
+          });
+          nTeamGames++;
+        });
+      });
+
+      // goals_per_win from season data
+      const avgGoalsPerTeam = nTeamGames ? totalGoals/nTeamGames : 2.25;
+      const gpw = 2*avgGoalsPerTeam;
+
+      const warRows = computeWAR(players, gpw, blocksMap);
+      onProgress(100, "Done");
+      return { rows: warRows, gpw, gameCount: gameIds.length, ts: Date.now() };
+    }
+
+    // ── Public API ───────────────────────────────────────────────
+    return {
+      loadCache() {
+        try {
+          const raw = localStorage.getItem(KEY);
+          if (!raw) return null;
+          const cached = JSON.parse(raw);
+          if (Date.now()-cached.ts > CACHE_TTL_MS) return null;
+          return cached;
+        } catch { return null; }
+      },
+      saveCache(data) {
+        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {}
+      },
+      run
+    };
+  })();
+  </script>
   <script>
   (function () {
     // ── State ───────────────────────────────────────────────────────
@@ -509,7 +966,7 @@
       document.getElementById("warCount").innerHTML =
         `<strong>${sorted.length}</strong> players · Season${selectedSeasons.size > 1 ? "s" : ""}: <strong>${sLabel}</strong>`;
       document.getElementById("warNote").textContent =
-        multi ? "WAR averaged across selected seasons" : (selectedSeasons.has("2025") ? "2025-26 complete season (120 games)" : "");
+        multi ? "WAR averaged across selected seasons" : (selectedSeasons.has("2025") ? "2025 = partial season (61/120 games)" : "");
     }
 
     function esc(s) {
@@ -526,14 +983,17 @@
       if (warChart) { warChart.destroy(); warChart = null; }
       if (!rows.length) return;
 
-      const chartMinToi = 100;
-      const chartMinGp  = 12;
-      const chartRows = rows.filter(r => r.toi >= chartMinToi && r.gp >= chartMinGp);
+      // Double the data-generation TOI floor to filter outliers from the chart
+      // 2025-26 (partial) was generated at 25 min → chart uses 50 min
+      // Full seasons were generated at 50 min → chart uses 100 min
+      const only2025 = selectedSeasons.size === 1 && selectedSeasons.has("2025");
+      const chartMinToi = only2025 ? 50 : 100;
+      const chartRows = rows.filter(r => r.toi >= chartMinToi);
       if (!chartRows.length) return;
 
-      // Baseline pool: all season players (ignores team/pos filter) at same floor
+      // Baseline pool: all season players (ignores team/pos filter) at same TOI floor
       // → thresholds stay fixed when drilling into a single team
-      const baseRows = (allRows || chartRows).filter(r => r.toi >= chartMinToi && r.gp >= chartMinGp);
+      const baseRows = (allRows || chartRows).filter(r => r.toi >= chartMinToi);
 
       const fRows = chartRows.filter(r => r.pos === "F");
       const dRows = chartRows.filter(r => r.pos === "D");
@@ -572,23 +1032,19 @@
           const xT = x.getPixelForValue(threshX);
           const yT = y.getPixelForValue(threshY);
           ctx.save();
-          // Dashed threshold lines
-          ctx.setLineDash([5, 4]);
-          ctx.strokeStyle = "rgba(150,150,150,0.5)";
-          ctx.lineWidth = 1.2;
-          ctx.beginPath(); ctx.moveTo(xT, ca.top);    ctx.lineTo(xT, ca.bottom); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(ca.left, yT);   ctx.lineTo(ca.right, yT);  ctx.stroke();
-          ctx.setLineDash([]);
-          // Quadrant labels
           ctx.font = "10px Inter, sans-serif";
           ctx.fillStyle = "rgba(140,140,140,0.75)";
           const PAD = 7;
+          // Top-left: high oWAR, low dWAR → Offensive Role Player
           ctx.textAlign = "left";
           ctx.fillText("Offensive Role Player", ca.left + PAD, ca.top + 14);
+          // Top-right: high oWAR, high dWAR → Elite
           ctx.textAlign = "right";
           ctx.fillText("Elite", ca.right - PAD, ca.top + 14);
+          // Bottom-left: low oWAR, low dWAR → Depth Player
           ctx.textAlign = "left";
           ctx.fillText("Depth Player", ca.left + PAD, ca.bottom - PAD);
+          // Bottom-right: low oWAR, high dWAR → Defensive Role Player
           ctx.textAlign = "right";
           ctx.fillText("Defensive Role Player", ca.right - PAD, ca.bottom - PAD);
           ctx.restore();
@@ -614,6 +1070,20 @@
               borderColor:     "rgba(170,145,30,0.9)",
               pointRadius: 5, pointHoverRadius: 7,
             },
+            // WAR threshold (median + 1 SD) vertical reference line
+            {
+              type: "line", label: "_v",
+              data: [{ x: threshX, y: minY }, { x: threshX, y: maxY }],
+              borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
+              borderDash: [5, 4], pointRadius: 0, fill: false,
+            },
+            // oWAR/GP threshold (median + 1 SD) horizontal reference line
+            {
+              type: "line", label: "_h",
+              data: [{ x: minX, y: threshY }, { x: maxX, y: threshY }],
+              borderColor: "rgba(150,150,150,0.4)", borderWidth: 1.2,
+              borderDash: [5, 4], pointRadius: 0, fill: false,
+            },
           ]
         },
         options: {
@@ -624,6 +1094,7 @@
             legend: {
               position: "top",
               labels: {
+                filter: item => !item.text.startsWith("_"),
                 boxWidth: 10, padding: 14,
                 font: { size: 11, family: "Inter, sans-serif" },
                 color: "#555",
@@ -697,6 +1168,61 @@
         render();
       });
     });
+
+    // ── Refresh UI wiring ────────────────────────────────────────────
+    const statusEl  = document.getElementById("refreshStatus");
+    const btnEl     = document.getElementById("refreshBtn");
+    const progressEl= document.getElementById("refreshProgress");
+    const barEl     = document.getElementById("refreshProgressBar");
+
+    function setStatus(ts, gameCount, gpw) {
+      const d = new Date(ts);
+      const ago = Math.round((Date.now()-ts)/60000);
+      const agoTxt = ago < 2 ? "just now" : ago < 60 ? `${ago}m ago` : `${Math.round(ago/60)}h ago`;
+      statusEl.innerHTML =
+        `<strong>2025 data:</strong> ${gameCount} games · gpw ${gpw.toFixed(2)} · updated ${agoTxt}`;
+      btnEl.disabled = false;
+    }
+
+    function setProgress(pct, msg) {
+      progressEl.style.display = pct < 100 && pct > 0 ? "block" : "none";
+      barEl.style.width = pct + "%";
+      if (msg) statusEl.innerHTML = `<strong>2025 data:</strong> ${msg}`;
+    }
+
+    async function doRefresh() {
+      btnEl.disabled = true;
+      btnEl.classList.add("spinning");
+      progressEl.style.display = "block";
+      try {
+        const result = await REFRESH.run(setProgress);
+        PWHL_DATA["2025"] = result.rows;
+        REFRESH.saveCache(result);
+        setStatus(result.ts, result.gameCount, result.gpw);
+        buildTeamFilter();
+        render();
+      } catch (err) {
+        statusEl.innerHTML = `<strong>2025 data:</strong> Refresh failed — ${err.message}`;
+        btnEl.disabled = false;
+      }
+      btnEl.classList.remove("spinning");
+      progressEl.style.display = "none";
+    }
+
+    btnEl.addEventListener("click", doRefresh);
+
+    // On load: try cache first, then show static data
+    (function initRefresh() {
+      const cached = REFRESH.loadCache();
+      if (cached) {
+        PWHL_DATA["2025"] = cached.rows;
+        setStatus(cached.ts, cached.gameCount, cached.gpw);
+        render();
+      } else {
+        statusEl.innerHTML = `<strong>2025 data:</strong> Using bundled snapshot · click Refresh for latest`;
+        btnEl.disabled = false;
+      }
+    })();
 
     // ── Init ────────────────────────────────────────────────────────
     buildTeamFilter();
