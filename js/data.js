@@ -60,7 +60,7 @@ const DATA = {
                 "using play-by-play data. Analyzed on-ice events to quantify " +
                 "individual player contributions across all game situations.",
       tags:     ["Python", "Sports Analytics", "Statistics"],
-      github:   "#",
+      github:   "https://github.com/Guten-Morgan",
       demo:     "pwhl.html",
       report:   null,
       color:    "#1B3A8A",
