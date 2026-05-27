@@ -307,7 +307,7 @@
       </a>
       <div class="war-badge">Sports Analytics</div>
       <h1>PWHL WAR Leaderboard</h1>
-      <p>Wins Above Replacement for PWHL skaters — oWAR from individual shot-generation (ixG60), dWAR from Fenwick xGA (goalie-agnostic) — across all three seasons (2023–24 through 2025–26).</p>
+      <p>Wins Above Replacement for PWHL skaters — oWAR from expected goals model using shot quality from on-ice coordinates using logistic regression, dWAR from expected goals agasint (goalie-agnostic) — across all three seasons (2023–24 through 2025–26).</p>
     </div>
   </div>
 
@@ -409,7 +409,7 @@
         Replacement level = 25th percentile of each component.
         Goals-per-win: 4.57 (2023), 5.05 (2024), 4.51 (2025).
         When multiple seasons are selected, WAR is averaged across seasons played.
-        <strong>2025 season is partial</strong> — defensive WAR uses xGA60 (xG against per 60, goalie-agnostic). Live refresh mirrors the Python model: xGA60 unit-variance normalised, OLS removes o_xG60 + position (is_D) deployment bias, no team-centering, defense_weight=-0.10.
+        Defensive WAR uses xGA60 (xG against per 60, goalie-agnostic). xGA60 unit-variance normalised, OLS removes o_xG60 + position (is_D) deployment bias, no team-centering, defense_weight=-0.10.
       </div>
     </div>
   </section>
