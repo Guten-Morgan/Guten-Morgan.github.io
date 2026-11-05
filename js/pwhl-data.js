@@ -426,3 +426,4 @@ const PWHL_DATA = {
     {"id":289,"name":"Kathryn Reilly","team":"OTT","pos":"D","season":2025,"gp":33,"toi":510.317,"G":0,"A1":4,"A2":0,"ixG":0.703,"oxg60":0.0827,"owar":-0.352,"dwar":0.024,"war":-0.328,"war60":-0.039,"ozs_pct":0.4969}
   ]
 };
+const PWHL_META = {"updated":"2026-11-05T17:24:33Z"};
