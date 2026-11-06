@@ -33,25 +33,25 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: model/requirements.txt
+          cache-dependency-path: model/Projects/PWHL_war/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r model/requirements.txt
+        run: pip install -r model/Projects/PWHL_war/requirements.txt
 
       - name: Cache API responses
         uses: actions/cache@v4
         with:
-          path: model/pwhl_war/data/raw/pbp_cache
+          path: model/Projects/PWHL_war/pwhl_war/data/raw/pbp_cache
           key: pwhl-api-${{ github.run_id }}
           restore-keys: pwhl-api-
 
       - name: Rebuild 2025-26 WAR
-        working-directory: model
+        working-directory: model/Projects/PWHL_war
         run: python regen_2526.py
 
       - name: Export pwhl-data.js
-        working-directory: model
-        run: python export_js.py ../js/pwhl-data.js
+        working-directory: model/Projects/PWHL_war
+        run: python export_js.py "$GITHUB_WORKSPACE/js/pwhl-data.js"
 
       - name: Commit if the data changed
         run: |
